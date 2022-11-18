@@ -13,22 +13,19 @@
 #include <CL/sycl/backend.hpp>
 #include <CL/sycl/backend/level_zero.hpp>
 
-#include <memory>
-
-struct ZeDeviceMemContext;
-
+struct usm_ptr_context_t;
 class UsmBufferMapper : public BufferMapper {
+    InferenceBackend::Image _image;
     std::shared_ptr<sycl::queue> _queue;
+    int _dma_fd;
 
-    InferenceBackend::Image _image = {};
-    std::unique_ptr<ZeDeviceMemContext> _map_context;
-
-    static void *allocateZeMem(std::shared_ptr<sycl::queue> queue, int dma_fd, size_t dma_size);
-    static void mapGstBuffer(GstBuffer *buffer, InferenceBackend::Image &image, ZeDeviceMemContext *map_context);
+    void *_ze_context;
+    void *_usm_ptr;
+    void *get_device_pointer(std::shared_ptr<sycl::queue> queue, void *buffer, InferenceBackend::Image *image, WatermarkVideoInfo *info);
 
   public:
     UsmBufferMapper(std::shared_ptr<sycl::queue> queue);
-    ~UsmBufferMapper();
-    InferenceBackend::Image map(GstBuffer *buffer, GstVideoInfo *info, GstMapFlags) override;
+
+    InferenceBackend::Image map(void *buffer, WatermarkVideoInfo *info, GstMapFlags) override;
     void unmap() override;
 };

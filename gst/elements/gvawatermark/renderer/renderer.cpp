@@ -26,7 +26,7 @@ int Renderer::FourccToOpenCVMatType(int fourcc) {
     throw std::invalid_argument("Could not convert fourcc to cv mat type: unsupported fourcc format");
 }
 
-std::vector<cv::Mat> Renderer::convertImageToMat(const InferenceBackend::Image &image) {
+std::vector<cv::Mat> Renderer::ConvertImageToMat(const InferenceBackend::Image &image) {
     std::vector<cv::Mat> image_planes;
     switch (image.format) {
     case InferenceBackend::FOURCC_BGRA:
@@ -59,25 +59,25 @@ void Renderer::convert_prims_color(std::vector<gapidraw::Prim> &prims) {
         // TODO: use references
         case gapidraw::Prim::index_of<gapidraw::Line>(): {
             gapidraw::Line line = cv::util::get<gapidraw::Line>(p);
-            line.color = _color_converter->convert(line.color);
+            line.color = m_colorConverter->convert(line.color);
             p = line;
             break;
         }
         case gapidraw::Prim::index_of<gapidraw::Rect>(): {
             gapidraw::Rect rect = cv::util::get<gapidraw::Rect>(p);
-            rect.color = _color_converter->convert(rect.color);
+            rect.color = m_colorConverter->convert(rect.color);
             p = rect;
             break;
         }
         case gapidraw::Prim::index_of<gapidraw::Text>(): {
             gapidraw::Text text = cv::util::get<gapidraw::Text>(p);
-            text.color = _color_converter->convert(text.color);
+            text.color = m_colorConverter->convert(text.color);
             p = text;
             break;
         }
         case gapidraw::Prim::index_of<gapidraw::Circle>(): {
             gapidraw::Circle circle = cv::util::get<gapidraw::Circle>(p);
-            circle.color = _color_converter->convert(circle.color);
+            circle.color = m_colorConverter->convert(circle.color);
             p = circle;
             break;
         }
@@ -85,12 +85,12 @@ void Renderer::convert_prims_color(std::vector<gapidraw::Prim> &prims) {
     }
 }
 
-void Renderer::draw(GstBuffer *buffer, GstVideoInfo *info, std::vector<gapidraw::Prim> prims) {
+void Renderer::draw(void *buffer, WatermarkVideoInfo *info, std::vector<gapidraw::Prim> prims) {
     BufferMapContext mapContext;
     InferenceBackend::Image image;
-    buffer_map(buffer, image, mapContext, info);
-    auto mapContextGuard = makeScopeGuard([&] { buffer_unmap(mapContext); });
-    std::vector<cv::Mat> image_planes = convertImageToMat(image);
+    buffer_map(buffer, image, info);
+    auto mapContextGuard = makeScopeGuard([&] { buffer_unmap(); });
+    std::vector<cv::Mat> image_planes = ConvertImageToMat(image);
     convert_prims_color(prims);
     draw_backend(image_planes, prims, image.drm_format_modifier);
 }

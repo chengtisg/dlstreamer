@@ -32,13 +32,16 @@ cv::Point2i calc_point_for_u_v_planes(cv::Point2i pt) {
 
 } // namespace
 
-void RendererCPU::buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
-                             GstVideoInfo *info) {
-    gva_buffer_map(buffer, image, map_context, info, _memory_type, GST_MAP_READWRITE);
+void RendererCPU::buffer_map(void *buffer, InferenceBackend::Image &image,
+                             WatermarkVideoInfo *info) {
+    //gva_buffer_map(buffer, image, map_context, info, _memory_type, GST_MAP_READWRITE);
+    (void)buffer;
+    (void)image;
+    (void)info;
 }
 
-void RendererCPU::buffer_unmap(BufferMapContext &map_context) {
-    gva_buffer_unmap(map_context);
+void RendererCPU::buffer_unmap() {
+//    gva_buffer_unmap(map_context);
 }
 
 void RendererYUV::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims, uint64_t) {

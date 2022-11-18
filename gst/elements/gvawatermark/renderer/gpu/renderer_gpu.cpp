@@ -261,12 +261,11 @@ void RendererGPU::draw_prims_on_mask(std::vector<gapidraw::Prim> &prims) {
     e3.wait();
 }
 
-void RendererGPU::buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &,
-                             GstVideoInfo *info) {
+void RendererGPU::buffer_map(void *buffer, InferenceBackend::Image &image, WatermarkVideoInfo *info) {
     image = buffer_mapper->map(buffer, info, GST_MAP_READWRITE);
 }
 
-void RendererGPU::buffer_unmap(BufferMapContext &) {
+void RendererGPU::buffer_unmap() {
     buffer_mapper->unmap();
 }
 
@@ -283,6 +282,7 @@ RendererGPU::RendererGPU(std::shared_ptr<ColorConverter> color_converter, Infere
     mask = gpu_unique_ptr<gpu::dpcpp::MaskedPixel>(sycl::malloc_device<gpu::dpcpp::MaskedPixel>(alloc_size, *queue),
                                                    [this](gpu::dpcpp::MaskedPixel *mask) { sycl::free(mask, *queue); });
     queue->fill(mask.get(), 0, alloc_size * sizeof(gpu::dpcpp::MaskedPixel)).wait();
+
 }
 
 RendererGPU::~RendererGPU() {

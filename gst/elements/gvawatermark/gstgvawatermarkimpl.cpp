@@ -366,7 +366,7 @@ bool Impl::render(GstBuffer *buffer) {
     if (ff_text.tellp() != 0)
         prims.emplace_back(gapidraw::Text(ff_text.str(), _ff_text_position, _font.type, _font.scale, _default_color));
 
-    _renderer->draw(buffer, _vinfo, prims);
+    //_renderer->draw(buffer, _vinfo, prims);
 
     return true;
 }

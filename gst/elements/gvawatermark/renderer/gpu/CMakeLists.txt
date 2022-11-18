@@ -15,7 +15,6 @@ set (TARGET_NAME "gpurenderer")
 find_package(OpenCV REQUIRED core gapi)
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(GSTREAMER gstreamer-1.0>=1.16 REQUIRED)
 pkg_search_module(VA va libva REQUIRED)
 
 get_filename_component(CMAKE_PARENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} PATH)
@@ -37,7 +36,6 @@ target_include_directories(${TARGET_NAME}
 PUBLIC
         ${VA_INCLUDE_DIRS}
         ${OPENCV_INCLUDE_DIRS}
-        ${GSTREAMER_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_PARENT_SOURCE_DIR}
 )
@@ -45,8 +43,6 @@ PUBLIC
 target_link_libraries(${TARGET_NAME}
 PUBLIC
         ${OpenCV_LIBS}
-        ${GSTREAMER_LIBRARIES}
-        ${GSTVIDEO_LIBRARIES}
         common
         ze_loader
         utils

@@ -1,0 +1,2281 @@
+diff --git a/gst/common/buffer_map/buffer_mapper.h b/gst/common/buffer_map/buffer_mapper.h
+index 555cbd9..21cf8a1 100644
+--- a/gst/common/buffer_map/buffer_mapper.h
++++ b/gst/common/buffer_map/buffer_mapper.h
+@@ -20,6 +20,6 @@ class BufferMapper {
+     BufferMapper() = default;
+     virtual ~BufferMapper() = default;
+ 
+-    virtual InferenceBackend::Image map(GstBuffer *buffer, GstVideoInfo *info, GstMapFlags flag) = 0;
++    virtual InferenceBackend::Image map(void *buffer, WatermarkVideoInfo *info, GstMapFlags) = 0;
+     virtual void unmap() = 0;
+ };
+diff --git a/gst/elements/gvawatermark/gstgvawatermarkimpl.cpp b/gst/elements/gvawatermark/gstgvawatermarkimpl.cpp
+index c6dab2c..a3c7493 100644
+--- a/gst/elements/gvawatermark/gstgvawatermarkimpl.cpp
++++ b/gst/elements/gvawatermark/gstgvawatermarkimpl.cpp
+@@ -366,7 +366,7 @@ bool Impl::render(GstBuffer *buffer) {
+     if (ff_text.tellp() != 0)
+         prims.emplace_back(gapidraw::Text(ff_text.str(), _ff_text_position, _font.type, _font.scale, _default_color));
+ 
+-    _renderer->draw(buffer, _vinfo, prims);
++    //_renderer->draw(buffer, _vinfo, prims);
+ 
+     return true;
+ }
+diff --git a/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.cpp b/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.cpp
+index ec7f553..9c63815 100644
+--- a/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.cpp
++++ b/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.cpp
+@@ -32,13 +32,16 @@ cv::Point2i calc_point_for_u_v_planes(cv::Point2i pt) {
+ 
+ } // namespace
+ 
+-void RendererCPU::buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
+-                             GstVideoInfo *info) {
+-    gva_buffer_map(buffer, image, map_context, info, _memory_type, GST_MAP_READWRITE);
++void RendererCPU::buffer_map(void *buffer, InferenceBackend::Image &image,
++                             WatermarkVideoInfo *info) {
++    //gva_buffer_map(buffer, image, map_context, info, _memory_type, GST_MAP_READWRITE);
++    (void)buffer;
++    (void)image;
++    (void)info;
+ }
+ 
+-void RendererCPU::buffer_unmap(BufferMapContext &map_context) {
+-    gva_buffer_unmap(map_context);
++void RendererCPU::buffer_unmap() {
++//    gva_buffer_unmap(map_context);
+ }
+ 
+ void RendererYUV::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims, uint64_t) {
+diff --git a/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.h b/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.h
+index 08414c3..2e1e79a 100644
+--- a/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.h
++++ b/gst/elements/gvawatermark/renderer/cpu/renderer_cpu.h
+@@ -15,9 +15,9 @@ class RendererCPU : public Renderer {
+     }
+ 
+   protected:
+-    void buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
+-                    GstVideoInfo *info) override;
+-    void buffer_unmap(BufferMapContext &map_context) override;
++    void buffer_map(void *buffer, InferenceBackend::Image &image,
++                    WatermarkVideoInfo *info) override;
++    void buffer_unmap() override;
+ };
+ 
+ class RendererYUV : public RendererCPU {
+diff --git a/gst/elements/gvawatermark/renderer/gpu/CMakeLists.txt b/gst/elements/gvawatermark/renderer/gpu/CMakeLists.txt
+index ad371d2..1ce0e0b 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/CMakeLists.txt
++++ b/gst/elements/gvawatermark/renderer/gpu/CMakeLists.txt
+@@ -1,55 +1,51 @@
+-# ==============================================================================
+-# Copyright (C) 2021 Intel Corporation
+-#
+-# SPDX-License-Identifier: MIT
+-# ==============================================================================
+-
+-cmake_minimum_required(VERSION 3.1)
+-
+-set(CMAKE_CXX_COMPILER dpcpp)
+-set(CMAKE_CXX_STANDARD 17)
+-string(REPLACE "-fno-strict-overflow" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+-
+-set (TARGET_NAME "gpurenderer")
+-
+-find_package(OpenCV REQUIRED core gapi)
+-find_package(PkgConfig REQUIRED)
+-
+-pkg_check_modules(GSTREAMER gstreamer-1.0>=1.16 REQUIRED)
+-pkg_search_module(VA va libva REQUIRED)
+-
+-get_filename_component(CMAKE_PARENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} PATH)
+-
+-file (GLOB SRC
+-        ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+-        )
+-
+-file (GLOB HEADERS
+-        ${CMAKE_CURRENT_SOURCE_DIR}/*.h
+-        ${CMAKE_PARENT_SOURCE_DIR}/renderer.h
+-        )
+-
+-add_library(${TARGET_NAME} SHARED ${SRC} ${HEADERS})
+-set_target_lib_version(${TARGET_NAME})
+-set_compile_flags(${TARGET_NAME})
+-
+-target_include_directories(${TARGET_NAME}
+-PUBLIC
+-        ${VA_INCLUDE_DIRS}
+-        ${OPENCV_INCLUDE_DIRS}
+-        ${GSTREAMER_INCLUDE_DIRS}
+-        ${CMAKE_CURRENT_SOURCE_DIR}
+-        ${CMAKE_PARENT_SOURCE_DIR}
+-)
+-
+-target_link_libraries(${TARGET_NAME}
+-PUBLIC
+-        ${OpenCV_LIBS}
+-        ${GSTREAMER_LIBRARIES}
+-        ${GSTVIDEO_LIBRARIES}
+-        common
+-        ze_loader
+-        utils
+-)
+-
+-install(TARGETS ${TARGET_NAME} DESTINATION ${DLSTREAMER_LIBRARIES_INSTALL_PATH})
++# ==============================================================================
++# Copyright (C) 2021 Intel Corporation
++#
++# SPDX-License-Identifier: MIT
++# ==============================================================================
++
++cmake_minimum_required(VERSION 3.1)
++
++set(CMAKE_CXX_COMPILER dpcpp)
++set(CMAKE_CXX_STANDARD 17)
++string(REPLACE "-fno-strict-overflow" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
++
++set (TARGET_NAME "gpurenderer")
++
++find_package(OpenCV REQUIRED core gapi)
++find_package(PkgConfig REQUIRED)
++
++pkg_search_module(VA va libva REQUIRED)
++
++get_filename_component(CMAKE_PARENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} PATH)
++
++file (GLOB SRC
++        ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
++        )
++
++file (GLOB HEADERS
++        ${CMAKE_CURRENT_SOURCE_DIR}/*.h
++        ${CMAKE_PARENT_SOURCE_DIR}/renderer.h
++        )
++
++add_library(${TARGET_NAME} SHARED ${SRC} ${HEADERS})
++set_target_lib_version(${TARGET_NAME})
++set_compile_flags(${TARGET_NAME})
++
++target_include_directories(${TARGET_NAME}
++PUBLIC
++        ${VA_INCLUDE_DIRS}
++        ${OPENCV_INCLUDE_DIRS}
++        ${CMAKE_CURRENT_SOURCE_DIR}
++        ${CMAKE_PARENT_SOURCE_DIR}
++)
++
++target_link_libraries(${TARGET_NAME}
++PUBLIC
++        ${OpenCV_LIBS}
++        common
++        ze_loader
++        utils
++)
++
++install(TARGETS ${TARGET_NAME} DESTINATION ${DLSTREAMER_LIBRARIES_INSTALL_PATH})
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/create_renderer.cpp b/gst/elements/gvawatermark/renderer/gpu/create_renderer.cpp
+index d8e35d2..16a2bff 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/create_renderer.cpp
++++ b/gst/elements/gvawatermark/renderer/gpu/create_renderer.cpp
+@@ -1,30 +1,65 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#include "renderer_gpu.h"
+-
+-#define VAAF_API __attribute__((__visibility__("default")))
+-
+-VAAF_API std::unique_ptr<Renderer> create_renderer(InferenceBackend::FourCC format,
+-                                                   std::shared_ptr<ColorConverter> converter,
+-                                                   InferenceBackend::MemoryType memory_type, int width, int height) {
+-    switch (format) {
+-    case InferenceBackend::FOURCC_BGRA:
+-    case InferenceBackend::FOURCC_BGRX:
+-    case InferenceBackend::FOURCC_BGR:
+-    case InferenceBackend::FOURCC_RGBA:
+-    case InferenceBackend::FOURCC_RGBX:
+-    case InferenceBackend::FOURCC_RGB:
+-        return std::unique_ptr<Renderer>(new gpu::draw::RendererBGR(converter, memory_type, width, height));
+-    case InferenceBackend::FOURCC_NV12:
+-        return std::unique_ptr<Renderer>(new gpu::draw::RendererNV12(converter, memory_type, width, height));
+-    case InferenceBackend::FOURCC_I420:
+-        return std::unique_ptr<Renderer>(new gpu::draw::RendererI420(converter, memory_type, width, height));
+-    default:
+-        throw std::runtime_error("Unsupported format");
+-    }
+-    return std::unique_ptr<Renderer>(new gpu::draw::RendererI420(converter, memory_type, width, height));
+-}
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#include "renderer_gpu.h"
++#include <iostream>
++#include <mutex>
++
++#define VAAF_API __attribute__((__visibility__("default")))
++
++std::mutex g_mutex;
++
++VAAF_API void * create_renderer(InferenceBackend::FourCC format,
++                                                   std::shared_ptr<ColorConverter> converter,
++                                                   InferenceBackend::MemoryType memory_type, int width, int height) {
++    std::lock_guard<std::mutex> guard(g_mutex);
++    gpu::draw::RendererNV12 *r = NULL;
++    //std::cout << "===============create_renderer=====================" << std::endl;
++    switch (format) {
++    case InferenceBackend::FOURCC_BGRA:
++    case InferenceBackend::FOURCC_BGRX:
++    case InferenceBackend::FOURCC_BGR:
++    case InferenceBackend::FOURCC_RGBA:
++    case InferenceBackend::FOURCC_RGBX:
++    case InferenceBackend::FOURCC_RGB:
++	    break;
++        //return std::unique_ptr<Renderer>(new gpu::draw::RendererBGR(converter, memory_type, width, height));
++    case InferenceBackend::FOURCC_NV12:
++	r = new gpu::draw::RendererNV12(converter, memory_type, width, height);
++	break;
++	//return std::unique_ptr<Renderer>(r);
++
++    case InferenceBackend::FOURCC_I420:
++	break;
++        //return std::unique_ptr<Renderer>(new gpu::draw::RendererI420(converter, memory_type, width, height));
++    default:
++        throw std::runtime_error("Unsupported format");
++    }
++    //return std::unique_ptr<Renderer>(new gpu::draw::RendererI420(converter, memory_type, width, height));
++    //std::cout << r << std::endl;
++    return (void*)r;
++}
++
++VAAF_API void buffer_unmap(void* p) {
++    std::lock_guard<std::mutex> guard(g_mutex);
++    gpu::draw::RendererNV12 *r = (gpu::draw::RendererNV12 *)p;
++    //std::cout << "===============buffer_unmap=====================" << std::endl;
++    r->buffer_unmap();
++}
++
++VAAF_API void buffer_map(void* p, void *buffer, InferenceBackend::Image &image, WatermarkVideoInfo *info) {
++    std::lock_guard<std::mutex> guard(g_mutex);
++    gpu::draw::RendererNV12 *r = (gpu::draw::RendererNV12 *)p;
++    //std::cout << "===============buffer_map =====================" << r << std::endl;
++    r->buffer_map(buffer, image, info);
++}
++
++VAAF_API void draw_backend(void* p, std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims, uint64_t drm_format_modifier) {
++    std::lock_guard<std::mutex> guard(g_mutex);
++    gpu::draw::RendererNV12 *r = (gpu::draw::RendererNV12 *)p;
++    //std::cout << "===============draw_backend=====================" << std::endl;
++    r->draw_backend(image_planes, prims, drm_format_modifier);
++}
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.cpp b/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.cpp
+index 697d697..fcddb99 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.cpp
++++ b/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.cpp
+@@ -1,265 +1,265 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#include "dpcpp_draw.h"
+-
+-#include <level_zero/ze_api.h>
+-
+-#include <CL/sycl.hpp>
+-#include <CL/sycl/backend.hpp>
+-#include <CL/sycl/backend/level_zero.hpp>
+-#include <algorithm>
+-#include <cmath>
+-#include <drm/drm_fourcc.h>
+-
+-// Coordinates conversion for tiled memory layout
+-constexpr int TILE_X_POW = 4;
+-constexpr int TILE_Y_POW = 5;
+-constexpr int TILE_X_MASK = ((1 << TILE_X_POW) - 1);
+-constexpr int TILE_Y_MASK = ((1 << TILE_Y_POW) - 1);
+-#define TILED_OFFSET(x, y, step)                                                                                       \
+-    ((y & ~TILE_Y_MASK) * step + ((x & ~TILE_X_MASK) << TILE_Y_POW) + ((y & TILE_Y_MASK) << TILE_X_POW) +              \
+-     (x & TILE_X_MASK))
+-
+-namespace {
+-
+-inline void setColor(const Color &src, gpu::dpcpp::MaskedPixel &dst) {
+-    dst.ch[0] = src[0];
+-    dst.ch[1] = src[1];
+-    dst.ch[2] = src[2];
+-    dst.ch[3] = src[3];
+-    dst.colored = true;
+-};
+-} // namespace
+-
+-sycl::event gpu::dpcpp::renderRectangles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
+-                                         const gpu::dpcpp::Rect *rectangles, size_t rectangles_size,
+-                                         size_t max_length) {
+-    sycl::event e;
+-    size_t local_length = 0;
+-    sycl::device device = queue.get_device();
+-    auto wgroup_size = device.get_info<sycl::info::device::max_work_group_size>();
+-
+-    if (max_length <= wgroup_size) {
+-        local_length = max_length;
+-    } else {
+-        local_length = wgroup_size;
+-        max_length = (max_length / wgroup_size + 1) * wgroup_size;
+-    }
+-
+-    sycl::range global{rectangles_size, max_length};
+-    sycl::range local{1, local_length};
+-
+-    e = queue.parallel_for<class RenderRectangle>(sycl::nd_range{global, local}, [=](sycl::nd_item<2> item) {
+-        const int k = item.get_global_id(0);
+-        const int i = item.get_global_id(1);
+-        const auto &draw_rect = rectangles[k];
+-        const auto thick = draw_rect.first.thick;
+-        const auto &rect = draw_rect.first.rect;
+-        const auto x = rect.x + i;
+-        const auto y = rect.y + i;
+-        if (x <= rect.x + rect.width + thick) {
+-            for (auto j = 0; j < thick; j++) {
+-                setColor(draw_rect.second, mask[x + (rect.y + j) * width]);
+-                setColor(draw_rect.second, mask[x + (rect.y + rect.height + thick + j) * width]);
+-            }
+-        }
+-        if (y <= rect.y + rect.height + thick) {
+-            for (auto j = 0; j < thick; j++) {
+-                setColor(draw_rect.second, mask[(rect.x + j) + y * width]);
+-                setColor(draw_rect.second, mask[(rect.x + rect.width + thick + j) + y * width]);
+-            }
+-        }
+-    });
+-    return e;
+-}
+-
+-sycl::event gpu::dpcpp::renderLines(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
+-                                    const gpu::dpcpp::Line *lines, size_t lines_size, size_t thick) {
+-    sycl::event e;
+-    sycl::range global{lines_size, thick};
+-    sycl::range local{1, 1};
+-    e = queue.parallel_for<class RenderLine>(sycl::nd_range{global, local}, [=](sycl::nd_item<2> item) {
+-        const int k = item.get_global_id(0);
+-        const int i = item.get_global_id(1);
+-        const auto &line = lines[k].first;
+-        auto x0 = line.pt1.x;
+-        auto x1 = line.pt2.x;
+-        auto y0 = line.pt1.y;
+-        auto y1 = line.pt2.y;
+-        auto steep = abs(y1 - y0) > abs(x1 - x0);
+-        if (!steep) {
+-            y0 += i;
+-            y1 += i;
+-        } else {
+-            x0 += i;
+-            x1 += i;
+-            std::swap(x0, y0);
+-            std::swap(x1, y1);
+-        }
+-        if (x0 > x1) {
+-            std::swap(x0, x1);
+-            std::swap(y0, y1);
+-        }
+-        auto dx = x1 - x0;
+-        auto dy = abs(y1 - y0);
+-        auto error = dx / 2;
+-        int ystep = (y0 < y1) ? 1 : -1;
+-        int x = x0;
+-        int y = y0;
+-        int &x_c = x;
+-        int &y_c = y;
+-        if (steep) {
+-            x_c = y;
+-            y_c = x;
+-        }
+-        for (x = x0; x <= x1; x++) {
+-            setColor(lines[k].second, mask[x_c + y_c * width]);
+-            error -= dy;
+-            if (error < 0) {
+-                y += ystep;
+-                error += dx;
+-            }
+-        }
+-    });
+-    return e;
+-}
+-
+-sycl::event gpu::dpcpp::renderTexts(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
+-                                    const gpu::dpcpp::Text *texts, size_t texts_size, size_t max_height,
+-                                    size_t max_width) {
+-    sycl::event e;
+-    sycl::device device = queue.get_device();
+-    auto wgroup_size = device.get_info<sycl::info::device::max_work_group_size>();
+-    size_t local_width = 0;
+-    size_t local_height = 0;
+-
+-    if (max_width <= wgroup_size) {
+-        local_width = max_width;
+-        wgroup_size = wgroup_size / local_width;
+-        if (max_height <= wgroup_size) {
+-            local_height = max_height;
+-        } else {
+-            local_height = wgroup_size;
+-            max_height = (max_height / wgroup_size + 1) * wgroup_size;
+-        }
+-    } else {
+-        local_width = wgroup_size;
+-        local_height = 1;
+-        max_width = (max_width / wgroup_size + 1) * wgroup_size;
+-    }
+-
+-    sycl::range global{texts_size, max_height, max_width};
+-    sycl::range local{1, local_height, local_width};
+-    e = queue.parallel_for<class RenderText>(sycl::nd_range{global, local}, [=](sycl::nd_item<3> item) {
+-        const size_t k = item.get_global_id(0);
+-        const size_t i = item.get_global_id(1);
+-        const size_t j = item.get_global_id(2);
+-        const auto &text = texts[k].first;
+-
+-        const size_t y = (size_t)text.y + i;
+-        const size_t x = (size_t)text.x + j;
+-        const size_t offset = x + y * width;
+-        const size_t max_width = ((size_t)text.x + text.w > width) ? width : (size_t)text.x + text.w;
+-        if (x <= max_width && y <= (size_t)text.y + text.h) {
+-            const sycl::int2 p1(text.x, text.y);
+-            const sycl::int2 p2(x, y);
+-            const sycl::int2 p3 = p2 - p1;
+-            const size_t patch_offset = p3.x() + text.w * p3.y();
+-            if (text.bitmap[patch_offset])
+-                setColor(texts[k].second, mask[offset]);
+-        }
+-    });
+-    return e;
+-}
+-
+-sycl::event gpu::dpcpp::renderCircles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
+-                                      const gpu::dpcpp::Circle *circles, size_t circles_size, size_t max_radius) {
+-    sycl::event e;
+-    auto max_d = max_radius * 2;
+-
+-    sycl::device device = queue.get_device();
+-    auto wgroup_size = device.get_info<sycl::info::device::max_work_group_size>();
+-    size_t local_width = 1;
+-    size_t local_height = 1;
+-
+-    if (max_d <= wgroup_size) {
+-        local_width = max_d;
+-        wgroup_size = wgroup_size / local_width;
+-    } else {
+-        local_width = wgroup_size;
+-        max_d = (max_d / wgroup_size + 1) * wgroup_size;
+-    }
+-
+-    sycl::range global{circles_size, max_d, max_d};
+-    sycl::range local{1, local_height, local_width};
+-    e = queue.parallel_for<class RenderCircle>(sycl::nd_range{global, local}, [=](sycl::nd_item<3> item) {
+-        const int k = item.get_global_id(0);
+-        const int i = item.get_global_id(1);
+-        const int j = item.get_global_id(2);
+-
+-        const cv::gapi::wip::draw::Circle &circle = circles[k].first;
+-        const int r2 = circle.radius * circle.radius + 1;
+-
+-        const size_t y = circle.center.y - circle.radius + i;
+-        const size_t x = circle.center.x - circle.radius + j;
+-        const int dx = circle.center.x - x;
+-        const int dy = circle.center.y - y;
+-        if (x <= width) {
+-
+-            if (dx * dx + dy * dy < r2) {
+-                const size_t offset = x + y * width;
+-                setColor(circles[k].second, mask[offset]);
+-            }
+-        }
+-    });
+-    return e;
+-}
+-
+-sycl::event gpu::dpcpp::mix(sycl::queue queue, gpu::dpcpp::MaskedPixel *mask, cv::Mat &image_plane, int plane_index,
+-                            gpu::dpcpp::SubsampligParams subsampling, uint64_t drm_format_modifier) {
+-    uint8_t *data = image_plane.data;
+-    int height = image_plane.rows;
+-    int width = image_plane.cols;
+-    uint32_t nchan = image_plane.channels();
+-
+-    uint8_t j_step = subsampling.J / subsampling.a;
+-    uint8_t i_step = subsampling.b == 0 ? 2 : 1;
+-
+-    int mask_width = image_plane.cols * j_step;
+-
+-    sycl::event e;
+-    if (drm_format_modifier == I915_FORMAT_MOD_Y_TILED) {
+-        e = queue.parallel_for(sycl::range<2>(height, width), [=](sycl::nd_item<2> item) {
+-            const size_t i = item.get_global_id(0) * i_step;
+-            const size_t j = item.get_global_id(1) * j_step;
+-            if (mask[i * mask_width + j].colored) {
+-                int x = j / j_step * nchan;
+-                int y = i / i_step;
+-                uint8_t *pix;
+-                pix = data + TILED_OFFSET(x, y, mask_width);
+-                for (size_t subpix = 0; subpix < nchan; subpix++) {
+-                    pix[subpix] = mask[i * mask_width + j].ch[plane_index + subpix];
+-                }
+-            }
+-        });
+-    } else {
+-        e = queue.parallel_for(sycl::range<2>(height, width), [=](sycl::nd_item<2> item) {
+-            const size_t i = item.get_global_id(0) * i_step;
+-            const size_t j = item.get_global_id(1) * j_step;
+-            if (mask[i * mask_width + j].colored) {
+-                int x = j / j_step * nchan;
+-                int y = i / i_step;
+-                uint8_t *pix;
+-                pix = data + y * width + x;
+-                for (size_t subpix = 0; subpix < nchan; subpix++) {
+-                    pix[subpix] = mask[i * mask_width + j].ch[plane_index + subpix];
+-                }
+-            }
+-        });
+-    }
+-    return e;
+-}
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#include "dpcpp_draw.h"
++
++#include <level_zero/ze_api.h>
++
++#include <CL/sycl.hpp>
++#include <CL/sycl/backend.hpp>
++#include <CL/sycl/backend/level_zero.hpp>
++#include <algorithm>
++#include <cmath>
++#include <drm/drm_fourcc.h>
++
++// Coordinates conversion for tiled memory layout
++constexpr int TILE_X_POW = 4;
++constexpr int TILE_Y_POW = 5;
++constexpr int TILE_X_MASK = ((1 << TILE_X_POW) - 1);
++constexpr int TILE_Y_MASK = ((1 << TILE_Y_POW) - 1);
++#define TILED_OFFSET(x, y, step)                                                                                       \
++    ((y & ~TILE_Y_MASK) * step + ((x & ~TILE_X_MASK) << TILE_Y_POW) + ((y & TILE_Y_MASK) << TILE_X_POW) +              \
++     (x & TILE_X_MASK))
++
++namespace {
++
++inline void setColor(const Color &src, gpu::dpcpp::MaskedPixel &dst) {
++    dst.ch[0] = src[0];
++    dst.ch[1] = src[1];
++    dst.ch[2] = src[2];
++    dst.ch[3] = src[3];
++    dst.colored = true;
++};
++} // namespace
++
++sycl::event gpu::dpcpp::renderRectangles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
++                                         const gpu::dpcpp::Rect *rectangles, size_t rectangles_size,
++                                         size_t max_length) {
++    sycl::event e;
++    size_t local_length = 0;
++    sycl::device device = queue.get_device();
++    auto wgroup_size = device.get_info<sycl::info::device::max_work_group_size>();
++
++    if (max_length <= wgroup_size) {
++        local_length = max_length;
++    } else {
++        local_length = wgroup_size;
++        max_length = (max_length / wgroup_size + 1) * wgroup_size;
++    }
++
++    sycl::range global{rectangles_size, max_length};
++    sycl::range local{1, local_length};
++
++    e = queue.parallel_for<class RenderRectangle>(sycl::nd_range{global, local}, [=](sycl::nd_item<2> item) {
++        const int k = item.get_global_id(0);
++        const int i = item.get_global_id(1);
++        const auto &draw_rect = rectangles[k];
++        const auto thick = draw_rect.first.thick;
++        const auto &rect = draw_rect.first.rect;
++        const auto x = rect.x + i;
++        const auto y = rect.y + i;
++        if (x <= rect.x + rect.width + thick) {
++            for (auto j = 0; j < thick; j++) {
++                setColor(draw_rect.second, mask[x + (rect.y + j) * width]);
++                setColor(draw_rect.second, mask[x + (rect.y + rect.height + thick + j) * width]);
++            }
++        }
++        if (y <= rect.y + rect.height + thick) {
++            for (auto j = 0; j < thick; j++) {
++                setColor(draw_rect.second, mask[(rect.x + j) + y * width]);
++                setColor(draw_rect.second, mask[(rect.x + rect.width + thick + j) + y * width]);
++            }
++        }
++    });
++    return e;
++}
++
++sycl::event gpu::dpcpp::renderLines(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
++                                    const gpu::dpcpp::Line *lines, size_t lines_size, size_t thick) {
++    sycl::event e;
++    sycl::range global{lines_size, thick};
++    sycl::range local{1, 1};
++    e = queue.parallel_for<class RenderLine>(sycl::nd_range{global, local}, [=](sycl::nd_item<2> item) {
++        const int k = item.get_global_id(0);
++        const int i = item.get_global_id(1);
++        const auto &line = lines[k].first;
++        auto x0 = line.pt1.x;
++        auto x1 = line.pt2.x;
++        auto y0 = line.pt1.y;
++        auto y1 = line.pt2.y;
++        auto steep = abs(y1 - y0) > abs(x1 - x0);
++        if (!steep) {
++            y0 += i;
++            y1 += i;
++        } else {
++            x0 += i;
++            x1 += i;
++            std::swap(x0, y0);
++            std::swap(x1, y1);
++        }
++        if (x0 > x1) {
++            std::swap(x0, x1);
++            std::swap(y0, y1);
++        }
++        auto dx = x1 - x0;
++        auto dy = abs(y1 - y0);
++        auto error = dx / 2;
++        int ystep = (y0 < y1) ? 1 : -1;
++        int x = x0;
++        int y = y0;
++        int &x_c = x;
++        int &y_c = y;
++        if (steep) {
++            x_c = y;
++            y_c = x;
++        }
++        for (x = x0; x <= x1; x++) {
++            setColor(lines[k].second, mask[x_c + y_c * width]);
++            error -= dy;
++            if (error < 0) {
++                y += ystep;
++                error += dx;
++            }
++        }
++    });
++    return e;
++}
++
++sycl::event gpu::dpcpp::renderTexts(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
++                                    const gpu::dpcpp::Text *texts, size_t texts_size, size_t max_height,
++                                    size_t max_width) {
++    sycl::event e;
++    sycl::device device = queue.get_device();
++    auto wgroup_size = device.get_info<sycl::info::device::max_work_group_size>();
++    size_t local_width = 0;
++    size_t local_height = 0;
++
++    if (max_width <= wgroup_size) {
++        local_width = max_width;
++        wgroup_size = wgroup_size / local_width;
++        if (max_height <= wgroup_size) {
++            local_height = max_height;
++        } else {
++            local_height = wgroup_size;
++            max_height = (max_height / wgroup_size + 1) * wgroup_size;
++        }
++    } else {
++        local_width = wgroup_size;
++        local_height = 1;
++        max_width = (max_width / wgroup_size + 1) * wgroup_size;
++    }
++
++    sycl::range global{texts_size, max_height, max_width};
++    sycl::range local{1, local_height, local_width};
++    e = queue.parallel_for<class RenderText>(sycl::nd_range{global, local}, [=](sycl::nd_item<3> item) {
++        const size_t k = item.get_global_id(0);
++        const size_t i = item.get_global_id(1);
++        const size_t j = item.get_global_id(2);
++        const auto &text = texts[k].first;
++
++        const size_t y = (size_t)text.y + i;
++        const size_t x = (size_t)text.x + j;
++        const size_t offset = x + y * width;
++        const size_t max_width = ((size_t)text.x + text.w > width) ? width : (size_t)text.x + text.w;
++        if (x <= max_width && y <= (size_t)text.y + text.h) {
++            const sycl::int2 p1(text.x, text.y);
++            const sycl::int2 p2(x, y);
++            const sycl::int2 p3 = p2 - p1;
++            const size_t patch_offset = p3.x() + text.w * p3.y();
++            if (text.bitmap[patch_offset])
++                setColor(texts[k].second, mask[offset]);
++        }
++    });
++    return e;
++}
++
++sycl::event gpu::dpcpp::renderCircles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
++                                      const gpu::dpcpp::Circle *circles, size_t circles_size, size_t max_radius) {
++    sycl::event e;
++    auto max_d = max_radius * 2;
++
++    sycl::device device = queue.get_device();
++    auto wgroup_size = device.get_info<sycl::info::device::max_work_group_size>();
++    size_t local_width = 1;
++    size_t local_height = 1;
++
++    if (max_d <= wgroup_size) {
++        local_width = max_d;
++        wgroup_size = wgroup_size / local_width;
++    } else {
++        local_width = wgroup_size;
++        max_d = (max_d / wgroup_size + 1) * wgroup_size;
++    }
++
++    sycl::range global{circles_size, max_d, max_d};
++    sycl::range local{1, local_height, local_width};
++    e = queue.parallel_for<class RenderCircle>(sycl::nd_range{global, local}, [=](sycl::nd_item<3> item) {
++        const int k = item.get_global_id(0);
++        const int i = item.get_global_id(1);
++        const int j = item.get_global_id(2);
++
++        const cv::gapi::wip::draw::Circle &circle = circles[k].first;
++        const int r2 = circle.radius * circle.radius + 1;
++
++        const size_t y = circle.center.y - circle.radius + i;
++        const size_t x = circle.center.x - circle.radius + j;
++        const int dx = circle.center.x - x;
++        const int dy = circle.center.y - y;
++        if (x <= width) {
++
++            if (dx * dx + dy * dy < r2) {
++                const size_t offset = x + y * width;
++                setColor(circles[k].second, mask[offset]);
++            }
++        }
++    });
++    return e;
++}
++
++sycl::event gpu::dpcpp::mix(sycl::queue queue, gpu::dpcpp::MaskedPixel *mask, cv::Mat &image_plane, int plane_index,
++                            gpu::dpcpp::SubsampligParams subsampling, uint64_t drm_format_modifier) {
++    uint8_t *data = image_plane.data;
++    int height = image_plane.rows;
++    int width = image_plane.cols;
++    uint32_t nchan = image_plane.channels();
++
++    uint8_t j_step = subsampling.J / subsampling.a;
++    uint8_t i_step = subsampling.b == 0 ? 2 : 1;
++
++    int mask_width = image_plane.cols * j_step;
++
++    sycl::event e;
++    if (drm_format_modifier == I915_FORMAT_MOD_Y_TILED) {
++        e = queue.parallel_for(sycl::range<2>(height, width), [=](sycl::nd_item<2> item) {
++            const size_t i = item.get_global_id(0) * i_step;
++            const size_t j = item.get_global_id(1) * j_step;
++            if (mask[i * mask_width + j].colored) {
++                int x = j / j_step * nchan;
++                int y = i / i_step;
++                uint8_t *pix;
++                pix = data + TILED_OFFSET(x, y, mask_width);
++                for (size_t subpix = 0; subpix < nchan; subpix++) {
++                    pix[subpix] = mask[i * mask_width + j].ch[plane_index + subpix];
++                }
++            }
++        });
++    } else {
++        e = queue.parallel_for(sycl::range<2>(height, width), [=](sycl::nd_item<2> item) {
++            const size_t i = item.get_global_id(0) * i_step;
++            const size_t j = item.get_global_id(1) * j_step;
++            if (mask[i * mask_width + j].colored) {
++                int x = j / j_step * nchan;
++                int y = i / i_step;
++                uint8_t *pix;
++                pix = data + y * width + x;
++                for (size_t subpix = 0; subpix < nchan; subpix++) {
++                    pix[subpix] = mask[i * mask_width + j].ch[plane_index + subpix];
++                }
++            }
++        });
++    }
++    return e;
++}
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.h b/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.h
+index 6efaca5..1680820 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.h
++++ b/gst/elements/gvawatermark/renderer/gpu/dpcpp_draw.h
+@@ -1,39 +1,39 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#pragma once
+-
+-#include "dpcpp_types.h"
+-
+-#include <level_zero/ze_api.h>
+-
+-#include <CL/sycl.hpp>
+-#include <CL/sycl/backend.hpp>
+-#include <CL/sycl/backend/level_zero.hpp>
+-#include <drm/drm_fourcc.h>
+-
+-#include <utility>
+-
+-namespace gpu {
+-namespace dpcpp {
+-
+-sycl::event renderRectangles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
+-                             const gpu::dpcpp::Rect *rectangles, size_t size, size_t max_length);
+-
+-sycl::event renderTexts(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask, const gpu::dpcpp::Text *texts,
+-                        size_t size, size_t max_height, size_t max_width);
+-
+-sycl::event renderCircles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
+-                          const gpu::dpcpp::Circle *circles, size_t size, size_t max_radius);
+-
+-sycl::event renderLines(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask, const gpu::dpcpp::Line *lines,
+-                        size_t size, size_t thick);
+-
+-sycl::event mix(sycl::queue queue, gpu::dpcpp::MaskedPixel *mask, cv::Mat &image_plane, int plane_index,
+-                gpu::dpcpp::SubsampligParams subsampling, uint64_t drm_format_modifier);
+-
+-} // namespace dpcpp
+-} // namespace gpu
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#pragma once
++
++#include "dpcpp_types.h"
++
++#include <level_zero/ze_api.h>
++
++#include <CL/sycl.hpp>
++#include <CL/sycl/backend.hpp>
++#include <CL/sycl/backend/level_zero.hpp>
++#include <drm/drm_fourcc.h>
++
++#include <utility>
++
++namespace gpu {
++namespace dpcpp {
++
++sycl::event renderRectangles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
++                             const gpu::dpcpp::Rect *rectangles, size_t size, size_t max_length);
++
++sycl::event renderTexts(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask, const gpu::dpcpp::Text *texts,
++                        size_t size, size_t max_height, size_t max_width);
++
++sycl::event renderCircles(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask,
++                          const gpu::dpcpp::Circle *circles, size_t size, size_t max_radius);
++
++sycl::event renderLines(sycl::queue queue, size_t width, gpu::dpcpp::MaskedPixel *mask, const gpu::dpcpp::Line *lines,
++                        size_t size, size_t thick);
++
++sycl::event mix(sycl::queue queue, gpu::dpcpp::MaskedPixel *mask, cv::Mat &image_plane, int plane_index,
++                gpu::dpcpp::SubsampligParams subsampling, uint64_t drm_format_modifier);
++
++} // namespace dpcpp
++} // namespace gpu
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/dpcpp_types.h b/gst/elements/gvawatermark/renderer/gpu/dpcpp_types.h
+index 5138582..830c2e3 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/dpcpp_types.h
++++ b/gst/elements/gvawatermark/renderer/gpu/dpcpp_types.h
+@@ -1,44 +1,44 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#pragma once
+-
+-#include "color_converter.h"
+-#include <opencv2/gapi.hpp>
+-#include <opencv2/gapi/render/render.hpp>
+-#include <opencv2/opencv.hpp>
+-
+-namespace gpu {
+-namespace dpcpp {
+-// gapi::Primitives such as Line, Rect etc uses cv::Scalar_<double> for Color field.
+-// But some GPU platforms does not support `double` format.
+-// We attached u_int8_t Color to primitives to avoid the problem.
+-using Rect = std::pair<cv::gapi::wip::draw::Rect, Color>;
+-using Circle = std::pair<cv::gapi::wip::draw::Circle, Color>;
+-using Line = std::pair<cv::gapi::wip::draw::Line, Color>;
+-
+-struct RasterText {
+-    uint8_t *bitmap; // gpu located
+-    int x;
+-    int y;
+-    int w;
+-    int h;
+-};
+-
+-using Text = std::pair<gpu::dpcpp::RasterText, Color>;
+-
+-struct MaskedPixel {
+-    cv::Scalar_<u_int8_t> ch;
+-    bool colored; // Indicates should the exact pixel be colored or not.
+-};
+-
+-struct SubsampligParams {
+-    uint8_t J;
+-    uint8_t a;
+-    uint8_t b;
+-};
+-} // namespace dpcpp
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#pragma once
++
++#include "color_converter.h"
++#include <opencv2/gapi.hpp>
++#include <opencv2/gapi/render/render.hpp>
++#include <opencv2/opencv.hpp>
++
++namespace gpu {
++namespace dpcpp {
++// gapi::Primitives such as Line, Rect etc uses cv::Scalar_<double> for Color field.
++// But some GPU platforms does not support `double` format.
++// We attached u_int8_t Color to primitives to avoid the problem.
++using Rect = std::pair<cv::gapi::wip::draw::Rect, Color>;
++using Circle = std::pair<cv::gapi::wip::draw::Circle, Color>;
++using Line = std::pair<cv::gapi::wip::draw::Line, Color>;
++
++struct RasterText {
++    uint8_t *bitmap; // gpu located
++    int x;
++    int y;
++    int w;
++    int h;
++};
++
++using Text = std::pair<gpu::dpcpp::RasterText, Color>;
++
++struct MaskedPixel {
++    cv::Scalar_<u_int8_t> ch;
++    bool colored; // Indicates should the exact pixel be colored or not.
++};
++
++struct SubsampligParams {
++    uint8_t J;
++    uint8_t a;
++    uint8_t b;
++};
++} // namespace dpcpp
+ } // namespace gpu
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.cpp b/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.cpp
+index 1117c8e..9931812 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.cpp
++++ b/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.cpp
+@@ -1,293 +1,293 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#include "renderer_gpu.h"
+-
+-#include "dpcpp_draw.h"
+-#include "inference_backend/logger.h"
+-#include "usm_buffer_map.h"
+-
+-#include <level_zero/ze_api.h>
+-
+-#include <CL/sycl.hpp>
+-#include <CL/sycl/backend.hpp>
+-#include <CL/sycl/backend/level_zero.hpp>
+-#include <CL/sycl/usm.hpp>
+-
+-#include <drm/drm_fourcc.h>
+-
+-#include <algorithm>
+-#include <cmath>
+-#include <memory>
+-#include <utility>
+-
+-using namespace gpu::draw;
+-
+-void RendererNV12::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
+-                                uint64_t drm_format_modifier) {
+-    ITT_TASK(__FUNCTION__);
+-    draw_prims_on_mask(prims);
+-
+-    sycl::event e0 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[0], 0, gpu::dpcpp::SubsampligParams{4, 4, 4},
+-                                     drm_format_modifier);
+-    sycl::event e1 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[1], 1, gpu::dpcpp::SubsampligParams{4, 2, 0},
+-                                     drm_format_modifier);
+-
+-    e0.wait();
+-    e1.wait();
+-
+-    clear_mask();
+-};
+-
+-void RendererI420::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
+-                                uint64_t drm_format_modifier) {
+-    ITT_TASK(__FUNCTION__);
+-    draw_prims_on_mask(prims);
+-    sycl::event e0 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[0], 0, gpu::dpcpp::SubsampligParams{4, 4, 4},
+-                                     drm_format_modifier);
+-    sycl::event e1 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[1], 1, gpu::dpcpp::SubsampligParams{4, 2, 0},
+-                                     drm_format_modifier);
+-    sycl::event e2 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[2], 2, gpu::dpcpp::SubsampligParams{4, 2, 0},
+-                                     drm_format_modifier);
+-
+-    e0.wait();
+-    e1.wait();
+-    e2.wait();
+-
+-    clear_mask();
+-}
+-
+-void RendererBGR::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
+-                               uint64_t drm_format_modifier) {
+-    ITT_TASK(__FUNCTION__);
+-    draw_prims_on_mask(prims);
+-
+-    sycl::event e0 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[0], 0, gpu::dpcpp::SubsampligParams{4, 4, 4},
+-                                     drm_format_modifier);
+-
+-    e0.wait();
+-
+-    clear_mask();
+-}
+-
+-gpu::dpcpp::Rect RendererGPU::prepare_rectangle(gapidraw::Rect rect, int &max_side) {
+-    rect.rect.x = rect.rect.x & ~1;
+-    rect.rect.y = rect.rect.y & ~1;
+-    rect.rect.height = rect.rect.height & ~1;
+-    rect.rect.width = rect.rect.width & ~1;
+-    if (rect.thick == 1) {
+-        rect.thick = 2;
+-    }
+-    rect.thick = rect.thick & ~1;
+-
+-    if (rect.rect.height + 2 * rect.thick > max_side) {
+-        max_side = rect.rect.height + 2 * rect.thick;
+-    }
+-    if (rect.rect.width + 2 * rect.thick > max_side) {
+-        max_side = rect.rect.width + 2 * rect.thick;
+-    }
+-
+-    if (rect.rect.x < 0)
+-        rect.rect.x = 0;
+-    if (rect.rect.y < 0)
+-        rect.rect.y = 0;
+-    if (rect.rect.x + rect.rect.width + 2 * rect.thick > image_width)
+-        rect.rect.width = image_width - rect.rect.x - 2 * rect.thick;
+-    if (rect.rect.y + rect.rect.height + 2 * rect.thick > image_height)
+-        rect.rect.height = image_height - rect.rect.y - 2 * rect.thick;
+-    return std::pair(rect, Color(rect.color));
+-}
+-
+-std::vector<gpu::dpcpp::Text> RendererGPU::prepare_text(const gapidraw::Text &drawing_text, int &max_width,
+-                                                        int &max_height) {
+-    std::vector<gpu::dpcpp::Text> tmp_texts;
+-    const std::string label = drawing_text.text + " ";
+-    std::string::size_type last_pos = 0;
+-    cv::Point sub_label_position = drawing_text.org;
+-    for (auto pos = label.find(" "); pos != std::string::npos; pos = label.find(" ", last_pos)) {
+-        std::string sub_label = label.substr(last_pos, pos - last_pos);
+-        if (not text_storage.count(sub_label)) {
+-            int baseline = 0;
+-            cv::Size text_size =
+-                cv::getTextSize(sub_label, drawing_text.ff, drawing_text.fs, drawing_text.thick, &baseline);
+-            text_size.height += baseline;
+-            uint8_t *text_data = sycl::malloc_device<uint8_t>(text_size.area(), *queue);
+-            cv::Mat m = cv::Mat::zeros(text_size.height, text_size.width, CV_8UC1);
+-            cv::putText(m, sub_label, {0, text_size.height - baseline}, drawing_text.ff, drawing_text.fs, 255,
+-                        drawing_text.thick, drawing_text.lt, false);
+-            queue->memcpy(text_data, m.data, text_size.area() * sizeof(uint8_t)).wait();
+-            text_storage[sub_label] = {text_data, text_size, baseline};
+-        }
+-        gpu::dpcpp::RasterText t = {
+-            .bitmap = text_storage[sub_label].map,
+-            .x = sub_label_position.x,
+-            .y = sub_label_position.y - text_storage[sub_label].size.height + text_storage[sub_label].baseline,
+-            .w = text_storage[sub_label].size.width,
+-            .h = text_storage[sub_label].size.height,
+-        };
+-        tmp_texts.push_back(gpu::dpcpp::Text(t, Color(drawing_text.color)));
+-        static const cv::Size space_size =
+-            cv::getTextSize(" ", drawing_text.ff, drawing_text.fs, drawing_text.thick, 0);
+-        sub_label_position.x += text_storage[sub_label].size.width + space_size.width;
+-        last_pos = pos + 1;
+-        if (t.h > max_height) {
+-            max_height = t.h;
+-        }
+-        if (t.w > max_width) {
+-            max_width = t.w;
+-        }
+-    }
+-    return tmp_texts;
+-}
+-
+-void RendererGPU::malloc_device_prims(int prim_type, uint32_t size) {
+-    switch (prim_type) {
+-    case gapidraw::Prim::index_of<gapidraw::Rect>(): {
+-        if (_rectangles_size < size) {
+-            _rectangles_size = size;
+-            rectangles = gpu_unique_ptr<gpu::dpcpp::Rect>(
+-                sycl::malloc_device<gpu::dpcpp::Rect>(_rectangles_size, *queue),
+-                [this](gpu::dpcpp::Rect *rectangles) { sycl::free(rectangles, *queue); });
+-        }
+-    }
+-    case gapidraw::Prim::index_of<gapidraw::Circle>(): {
+-        if (_circles_size < size) {
+-            _circles_size = size;
+-            circles = gpu_unique_ptr<gpu::dpcpp::Circle>(
+-                sycl::malloc_device<gpu::dpcpp::Circle>(_circles_size, *queue),
+-                [this](gpu::dpcpp::Circle *circles) { sycl::free(circles, *queue); });
+-        }
+-    }
+-    case gapidraw::Prim::index_of<gapidraw::Text>(): {
+-        if (_texts_size < size) {
+-            _texts_size = size;
+-            texts = gpu_unique_ptr<gpu::dpcpp::Text>(sycl::malloc_device<gpu::dpcpp::Text>(_texts_size, *queue),
+-                                                     [this](gpu::dpcpp::Text *texts) { sycl::free(texts, *queue); });
+-        }
+-    }
+-    case gapidraw::Prim::index_of<gapidraw::Line>(): {
+-        if (_lines_size < size) {
+-            _lines_size = size;
+-            lines = gpu_unique_ptr<gpu::dpcpp::Line>(sycl::malloc_device<gpu::dpcpp::Line>(_lines_size, *queue),
+-                                                     [this](gpu::dpcpp::Line *lines) { sycl::free(lines, *queue); });
+-        }
+-    }
+-    }
+-}
+-
+-void RendererGPU::draw_prims_on_mask(std::vector<gapidraw::Prim> &prims) {
+-    ITT_TASK(__FUNCTION__);
+-
+-    std::vector<gpu::dpcpp::Rect> tmp_rectangles;
+-    std::vector<gpu::dpcpp::Circle> tmp_circles;
+-    std::vector<gpu::dpcpp::Line> tmp_lines;
+-    tmp_rectangles.reserve(prims.size());
+-    tmp_circles.reserve(prims.size());
+-    tmp_lines.reserve(prims.size());
+-
+-    std::vector<gpu::dpcpp::Text> tmp_texts;
+-    auto rect_max_side = 0;
+-    auto text_max_width = 0;
+-    auto text_max_height = 0;
+-    auto max_radius = 0;
+-
+-    for (const auto &p : prims) {
+-        switch (p.index()) {
+-        case gapidraw::Prim::index_of<gapidraw::Rect>(): {
+-            tmp_rectangles.emplace_back(prepare_rectangle(cv::util::get<gapidraw::Rect>(p), rect_max_side));
+-            break;
+-        }
+-        case gapidraw::Prim::index_of<gapidraw::Text>(): {
+-            auto texts_to_append = prepare_text(cv::util::get<gapidraw::Text>(p), text_max_width, text_max_height);
+-            tmp_texts.insert(tmp_texts.end(), texts_to_append.begin(), texts_to_append.end());
+-            break;
+-        }
+-        case gapidraw::Prim::index_of<gapidraw::Circle>(): {
+-            const auto &circle = cv::util::get<gapidraw::Circle>(p);
+-            if (circle.radius > max_radius) {
+-                max_radius = circle.radius;
+-            }
+-            tmp_circles.emplace_back(std::pair(circle, Color(circle.color)));
+-            break;
+-        }
+-        case gapidraw::Prim::index_of<gapidraw::Line>(): {
+-            const auto &line = cv::util::get<gapidraw::Line>(p);
+-            tmp_lines.emplace_back(std::pair(line, Color(line.color)));
+-            break;
+-        }
+-        default:
+-            throw std::runtime_error("Unsupported primitive type");
+-        }
+-    }
+-    sycl::event e0, e1, e2, e3;
+-
+-    mask_clear_event.wait();
+-    if (!tmp_rectangles.empty()) {
+-        uint32_t rectangles_size = tmp_rectangles.size();
+-        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Rect>(), rectangles_size);
+-        queue->memcpy(rectangles.get(), tmp_rectangles.data(), rectangles_size * sizeof(gpu::dpcpp::Rect)).wait();
+-        e0 = gpu::dpcpp::renderRectangles(*queue, image_width, mask.get(), rectangles.get(), rectangles_size,
+-                                          rect_max_side);
+-    }
+-
+-    if (!tmp_circles.empty()) {
+-        uint32_t circles_size = tmp_circles.size();
+-        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Circle>(), circles_size);
+-        queue->memcpy(circles.get(), tmp_circles.data(), tmp_circles.size() * sizeof(gpu::dpcpp::Circle)).wait();
+-        e1 = gpu::dpcpp::renderCircles(*queue, image_width, mask.get(), circles.get(), circles_size, max_radius);
+-    }
+-
+-    if (!tmp_lines.empty()) {
+-        uint32_t lines_size = tmp_lines.size();
+-        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Line>(), lines_size);
+-        queue->memcpy(lines.get(), tmp_lines.data(), tmp_lines.size() * sizeof(gpu::dpcpp::Line)).wait();
+-        e3 =
+-            gpu::dpcpp::renderLines(*queue, image_width, mask.get(), lines.get(), lines_size, tmp_lines[0].first.thick);
+-    }
+-
+-    if (!tmp_texts.empty()) {
+-        uint32_t texts_size = tmp_texts.size();
+-        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Text>(), texts_size);
+-        queue->memcpy(texts.get(), tmp_texts.data(), tmp_texts.size() * sizeof(gpu::dpcpp::Text)).wait();
+-        e2 = gpu::dpcpp::renderTexts(*queue, image_width, mask.get(), texts.get(), texts_size, text_max_height,
+-                                     text_max_width);
+-    }
+-    e0.wait();
+-    e1.wait();
+-    e2.wait();
+-    e3.wait();
+-}
+-
+-void RendererGPU::buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &,
+-                             GstVideoInfo *info) {
+-    image = buffer_mapper->map(buffer, info, GST_MAP_READWRITE);
+-}
+-
+-void RendererGPU::buffer_unmap(BufferMapContext &) {
+-    buffer_mapper->unmap();
+-}
+-
+-void RendererGPU::clear_mask() {
+-    mask_clear_event = queue->fill(mask.get(), 0, image_height * image_width * sizeof(gpu::dpcpp::MaskedPixel));
+-}
+-
+-RendererGPU::RendererGPU(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
+-                         int image_width, int image_height)
+-    : Renderer(color_converter, memory_type), image_width(image_width), image_height(image_height) {
+-    queue = std::make_shared<sycl::queue>(sycl::gpu_selector());
+-    buffer_mapper = std::shared_ptr<BufferMapper>(new UsmBufferMapper(queue));
+-    int alloc_size = image_height * image_width;
+-    mask = gpu_unique_ptr<gpu::dpcpp::MaskedPixel>(sycl::malloc_device<gpu::dpcpp::MaskedPixel>(alloc_size, *queue),
+-                                                   [this](gpu::dpcpp::MaskedPixel *mask) { sycl::free(mask, *queue); });
+-    queue->fill(mask.get(), 0, alloc_size * sizeof(gpu::dpcpp::MaskedPixel)).wait();
+-}
+-
+-RendererGPU::~RendererGPU() {
+-    mask_clear_event.wait();
+-    for (auto &t : text_storage)
+-        if (t.second.map)
+-            sycl::free(t.second.map, *queue);
+-}
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#include "renderer_gpu.h"
++
++#include "dpcpp_draw.h"
++#include "inference_backend/logger.h"
++#include "usm_buffer_map.h"
++
++#include <level_zero/ze_api.h>
++
++#include <CL/sycl.hpp>
++#include <CL/sycl/backend.hpp>
++#include <CL/sycl/backend/level_zero.hpp>
++#include <CL/sycl/usm.hpp>
++
++#include <drm/drm_fourcc.h>
++
++#include <algorithm>
++#include <cmath>
++#include <memory>
++#include <utility>
++
++using namespace gpu::draw;
++
++void RendererNV12::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
++                                uint64_t drm_format_modifier) {
++    ITT_TASK(__FUNCTION__);
++    draw_prims_on_mask(prims);
++
++    sycl::event e0 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[0], 0, gpu::dpcpp::SubsampligParams{4, 4, 4},
++                                     drm_format_modifier);
++    sycl::event e1 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[1], 1, gpu::dpcpp::SubsampligParams{4, 2, 0},
++                                     drm_format_modifier);
++
++    e0.wait();
++    e1.wait();
++
++    clear_mask();
++};
++
++void RendererI420::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
++                                uint64_t drm_format_modifier) {
++    ITT_TASK(__FUNCTION__);
++    draw_prims_on_mask(prims);
++    sycl::event e0 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[0], 0, gpu::dpcpp::SubsampligParams{4, 4, 4},
++                                     drm_format_modifier);
++    sycl::event e1 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[1], 1, gpu::dpcpp::SubsampligParams{4, 2, 0},
++                                     drm_format_modifier);
++    sycl::event e2 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[2], 2, gpu::dpcpp::SubsampligParams{4, 2, 0},
++                                     drm_format_modifier);
++
++    e0.wait();
++    e1.wait();
++    e2.wait();
++
++    clear_mask();
++}
++
++void RendererBGR::draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
++                               uint64_t drm_format_modifier) {
++    ITT_TASK(__FUNCTION__);
++    draw_prims_on_mask(prims);
++
++    sycl::event e0 = gpu::dpcpp::mix(*queue, mask.get(), image_planes[0], 0, gpu::dpcpp::SubsampligParams{4, 4, 4},
++                                     drm_format_modifier);
++
++    e0.wait();
++
++    clear_mask();
++}
++
++gpu::dpcpp::Rect RendererGPU::prepare_rectangle(gapidraw::Rect rect, int &max_side) {
++    rect.rect.x = rect.rect.x & ~1;
++    rect.rect.y = rect.rect.y & ~1;
++    rect.rect.height = rect.rect.height & ~1;
++    rect.rect.width = rect.rect.width & ~1;
++    if (rect.thick == 1) {
++        rect.thick = 2;
++    }
++    rect.thick = rect.thick & ~1;
++
++    if (rect.rect.height + 2 * rect.thick > max_side) {
++        max_side = rect.rect.height + 2 * rect.thick;
++    }
++    if (rect.rect.width + 2 * rect.thick > max_side) {
++        max_side = rect.rect.width + 2 * rect.thick;
++    }
++
++    if (rect.rect.x < 0)
++        rect.rect.x = 0;
++    if (rect.rect.y < 0)
++        rect.rect.y = 0;
++    if (rect.rect.x + rect.rect.width + 2 * rect.thick > image_width)
++        rect.rect.width = image_width - rect.rect.x - 2 * rect.thick;
++    if (rect.rect.y + rect.rect.height + 2 * rect.thick > image_height)
++        rect.rect.height = image_height - rect.rect.y - 2 * rect.thick;
++    return std::pair(rect, Color(rect.color));
++}
++
++std::vector<gpu::dpcpp::Text> RendererGPU::prepare_text(const gapidraw::Text &drawing_text, int &max_width,
++                                                        int &max_height) {
++    std::vector<gpu::dpcpp::Text> tmp_texts;
++    const std::string label = drawing_text.text + " ";
++    std::string::size_type last_pos = 0;
++    cv::Point sub_label_position = drawing_text.org;
++    for (auto pos = label.find(" "); pos != std::string::npos; pos = label.find(" ", last_pos)) {
++        std::string sub_label = label.substr(last_pos, pos - last_pos);
++        if (not text_storage.count(sub_label)) {
++            int baseline = 0;
++            cv::Size text_size =
++                cv::getTextSize(sub_label, drawing_text.ff, drawing_text.fs, drawing_text.thick, &baseline);
++            text_size.height += baseline;
++            uint8_t *text_data = sycl::malloc_device<uint8_t>(text_size.area(), *queue);
++            cv::Mat m = cv::Mat::zeros(text_size.height, text_size.width, CV_8UC1);
++            cv::putText(m, sub_label, {0, text_size.height - baseline}, drawing_text.ff, drawing_text.fs, 255,
++                        drawing_text.thick, drawing_text.lt, false);
++            queue->memcpy(text_data, m.data, text_size.area() * sizeof(uint8_t)).wait();
++            text_storage[sub_label] = {text_data, text_size, baseline};
++        }
++        gpu::dpcpp::RasterText t = {
++            .bitmap = text_storage[sub_label].map,
++            .x = sub_label_position.x,
++            .y = sub_label_position.y - text_storage[sub_label].size.height + text_storage[sub_label].baseline,
++            .w = text_storage[sub_label].size.width,
++            .h = text_storage[sub_label].size.height,
++        };
++        tmp_texts.push_back(gpu::dpcpp::Text(t, Color(drawing_text.color)));
++        static const cv::Size space_size =
++            cv::getTextSize(" ", drawing_text.ff, drawing_text.fs, drawing_text.thick, 0);
++        sub_label_position.x += text_storage[sub_label].size.width + space_size.width;
++        last_pos = pos + 1;
++        if (t.h > max_height) {
++            max_height = t.h;
++        }
++        if (t.w > max_width) {
++            max_width = t.w;
++        }
++    }
++    return tmp_texts;
++}
++
++void RendererGPU::malloc_device_prims(int prim_type, uint32_t size) {
++    switch (prim_type) {
++    case gapidraw::Prim::index_of<gapidraw::Rect>(): {
++        if (_rectangles_size < size) {
++            _rectangles_size = size;
++            rectangles = gpu_unique_ptr<gpu::dpcpp::Rect>(
++                sycl::malloc_device<gpu::dpcpp::Rect>(_rectangles_size, *queue),
++                [this](gpu::dpcpp::Rect *rectangles) { sycl::free(rectangles, *queue); });
++        }
++    }
++    case gapidraw::Prim::index_of<gapidraw::Circle>(): {
++        if (_circles_size < size) {
++            _circles_size = size;
++            circles = gpu_unique_ptr<gpu::dpcpp::Circle>(
++                sycl::malloc_device<gpu::dpcpp::Circle>(_circles_size, *queue),
++                [this](gpu::dpcpp::Circle *circles) { sycl::free(circles, *queue); });
++        }
++    }
++    case gapidraw::Prim::index_of<gapidraw::Text>(): {
++        if (_texts_size < size) {
++            _texts_size = size;
++            texts = gpu_unique_ptr<gpu::dpcpp::Text>(sycl::malloc_device<gpu::dpcpp::Text>(_texts_size, *queue),
++                                                     [this](gpu::dpcpp::Text *texts) { sycl::free(texts, *queue); });
++        }
++    }
++    case gapidraw::Prim::index_of<gapidraw::Line>(): {
++        if (_lines_size < size) {
++            _lines_size = size;
++            lines = gpu_unique_ptr<gpu::dpcpp::Line>(sycl::malloc_device<gpu::dpcpp::Line>(_lines_size, *queue),
++                                                     [this](gpu::dpcpp::Line *lines) { sycl::free(lines, *queue); });
++        }
++    }
++    }
++}
++
++void RendererGPU::draw_prims_on_mask(std::vector<gapidraw::Prim> &prims) {
++    ITT_TASK(__FUNCTION__);
++
++    std::vector<gpu::dpcpp::Rect> tmp_rectangles;
++    std::vector<gpu::dpcpp::Circle> tmp_circles;
++    std::vector<gpu::dpcpp::Line> tmp_lines;
++    tmp_rectangles.reserve(prims.size());
++    tmp_circles.reserve(prims.size());
++    tmp_lines.reserve(prims.size());
++
++    std::vector<gpu::dpcpp::Text> tmp_texts;
++    auto rect_max_side = 0;
++    auto text_max_width = 0;
++    auto text_max_height = 0;
++    auto max_radius = 0;
++
++    for (const auto &p : prims) {
++        switch (p.index()) {
++        case gapidraw::Prim::index_of<gapidraw::Rect>(): {
++            tmp_rectangles.emplace_back(prepare_rectangle(cv::util::get<gapidraw::Rect>(p), rect_max_side));
++            break;
++        }
++        case gapidraw::Prim::index_of<gapidraw::Text>(): {
++            auto texts_to_append = prepare_text(cv::util::get<gapidraw::Text>(p), text_max_width, text_max_height);
++            tmp_texts.insert(tmp_texts.end(), texts_to_append.begin(), texts_to_append.end());
++            break;
++        }
++        case gapidraw::Prim::index_of<gapidraw::Circle>(): {
++            const auto &circle = cv::util::get<gapidraw::Circle>(p);
++            if (circle.radius > max_radius) {
++                max_radius = circle.radius;
++            }
++            tmp_circles.emplace_back(std::pair(circle, Color(circle.color)));
++            break;
++        }
++        case gapidraw::Prim::index_of<gapidraw::Line>(): {
++            const auto &line = cv::util::get<gapidraw::Line>(p);
++            tmp_lines.emplace_back(std::pair(line, Color(line.color)));
++            break;
++        }
++        default:
++            throw std::runtime_error("Unsupported primitive type");
++        }
++    }
++    sycl::event e0, e1, e2, e3;
++
++    mask_clear_event.wait();
++    if (!tmp_rectangles.empty()) {
++        uint32_t rectangles_size = tmp_rectangles.size();
++        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Rect>(), rectangles_size);
++        queue->memcpy(rectangles.get(), tmp_rectangles.data(), rectangles_size * sizeof(gpu::dpcpp::Rect)).wait();
++        e0 = gpu::dpcpp::renderRectangles(*queue, image_width, mask.get(), rectangles.get(), rectangles_size,
++                                          rect_max_side);
++    }
++
++    if (!tmp_circles.empty()) {
++        uint32_t circles_size = tmp_circles.size();
++        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Circle>(), circles_size);
++        queue->memcpy(circles.get(), tmp_circles.data(), tmp_circles.size() * sizeof(gpu::dpcpp::Circle)).wait();
++        e1 = gpu::dpcpp::renderCircles(*queue, image_width, mask.get(), circles.get(), circles_size, max_radius);
++    }
++
++    if (!tmp_lines.empty()) {
++        uint32_t lines_size = tmp_lines.size();
++        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Line>(), lines_size);
++        queue->memcpy(lines.get(), tmp_lines.data(), tmp_lines.size() * sizeof(gpu::dpcpp::Line)).wait();
++        e3 =
++            gpu::dpcpp::renderLines(*queue, image_width, mask.get(), lines.get(), lines_size, tmp_lines[0].first.thick);
++    }
++
++    if (!tmp_texts.empty()) {
++        uint32_t texts_size = tmp_texts.size();
++        malloc_device_prims(gapidraw::Prim::index_of<gapidraw::Text>(), texts_size);
++        queue->memcpy(texts.get(), tmp_texts.data(), tmp_texts.size() * sizeof(gpu::dpcpp::Text)).wait();
++        e2 = gpu::dpcpp::renderTexts(*queue, image_width, mask.get(), texts.get(), texts_size, text_max_height,
++                                     text_max_width);
++    }
++    e0.wait();
++    e1.wait();
++    e2.wait();
++    e3.wait();
++}
++
++void RendererGPU::buffer_map(void *buffer, InferenceBackend::Image &image, WatermarkVideoInfo *info) {
++    image = buffer_mapper->map(buffer, info, GST_MAP_READWRITE);
++}
++
++void RendererGPU::buffer_unmap() {
++    buffer_mapper->unmap();
++}
++
++void RendererGPU::clear_mask() {
++    mask_clear_event = queue->fill(mask.get(), 0, image_height * image_width * sizeof(gpu::dpcpp::MaskedPixel));
++}
++
++RendererGPU::RendererGPU(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
++                         int image_width, int image_height)
++    : Renderer(color_converter, memory_type), image_width(image_width), image_height(image_height) {
++    queue = std::make_shared<sycl::queue>(sycl::gpu_selector());
++    buffer_mapper = std::shared_ptr<BufferMapper>(new UsmBufferMapper(queue));
++    int alloc_size = image_height * image_width;
++    mask = gpu_unique_ptr<gpu::dpcpp::MaskedPixel>(sycl::malloc_device<gpu::dpcpp::MaskedPixel>(alloc_size, *queue),
++                                                   [this](gpu::dpcpp::MaskedPixel *mask) { sycl::free(mask, *queue); });
++    queue->fill(mask.get(), 0, alloc_size * sizeof(gpu::dpcpp::MaskedPixel)).wait();
++
++}
++
++RendererGPU::~RendererGPU() {
++    mask_clear_event.wait();
++    for (auto &t : text_storage)
++        if (t.second.map)
++            sycl::free(t.second.map, *queue);
++}
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.h b/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.h
+index ef82b2b..5eb98b3 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.h
++++ b/gst/elements/gvawatermark/renderer/gpu/renderer_gpu.h
+@@ -1,101 +1,100 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#pragma once
+-
+-#include "dpcpp_types.h"
+-#include "renderer.h"
+-
+-#include <CL/sycl.hpp>
+-
+-#include <gst/video/video-frame.h>
+-
+-class BufferMapper;
+-namespace gpu {
+-namespace draw {
+-
+-class RendererGPU : public Renderer {
+-  protected:
+-    template <typename T>
+-    using gpu_unique_ptr = std::unique_ptr<T, std::function<void(T *)>>;
+-
+-    struct TextStorage {
+-        uint8_t *map;
+-        cv::Size size;
+-        int baseline;
+-    };
+-
+-    int image_width;
+-    int image_height;
+-    std::shared_ptr<sycl::queue> queue;
+-    gpu_unique_ptr<gpu::dpcpp::MaskedPixel> mask;
+-    std::map<std::string, TextStorage> text_storage;
+-    std::shared_ptr<BufferMapper> buffer_mapper;
+-    sycl::event mask_clear_event;
+-
+-    gpu_unique_ptr<gpu::dpcpp::Rect> rectangles = nullptr;
+-    gpu_unique_ptr<gpu::dpcpp::Circle> circles = nullptr;
+-    gpu_unique_ptr<gpu::dpcpp::Line> lines = nullptr;
+-    gpu_unique_ptr<gpu::dpcpp::Text> texts = nullptr;
+-    uint32_t _rectangles_size = 0;
+-    uint32_t _circles_size = 0;
+-    uint32_t _lines_size = 0;
+-    uint32_t _texts_size = 0;
+-
+-    gpu::dpcpp::Rect prepare_rectangle(gapidraw::Rect rect, int &max_side);
+-    std::vector<gpu::dpcpp::Text> prepare_text(const gapidraw::Text &drawing_text, int &max_width, int &max_height);
+-    void draw_prims_on_mask(std::vector<cv::gapi::wip::draw::Prim> &prims);
+-
+-    void buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
+-                    GstVideoInfo *info) override;
+-    void buffer_unmap(BufferMapContext &map_context) override;
+-    void malloc_device_prims(int index, uint32_t size);
+-    void clear_mask();
+-
+-  public:
+-    RendererGPU(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
+-                int image_width, int image_height);
+-    ~RendererGPU();
+-};
+-
+-class RendererNV12 : public RendererGPU {
+-  protected:
+-    void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
+-                      uint64_t drm_format_modifier) override;
+-
+-  public:
+-    RendererNV12(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
+-                 int image_width, int image_height)
+-        : RendererGPU(color_converter, memory_type, image_width, image_height) {
+-    }
+-};
+-
+-class RendererI420 : public RendererGPU {
+-  protected:
+-    void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
+-                      uint64_t drm_format_modifier) override;
+-
+-  public:
+-    RendererI420(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
+-                 int image_width, int image_height)
+-        : RendererGPU(color_converter, memory_type, image_width, image_height) {
+-    }
+-};
+-
+-class RendererBGR : public RendererGPU {
+-  protected:
+-    void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
+-                      uint64_t drm_format_modifier) override;
+-
+-  public:
+-    RendererBGR(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
+-                int image_width, int image_height)
+-        : RendererGPU(color_converter, memory_type, image_width, image_height) {
+-    }
+-};
+-
+-} // namespace draw
+-} // namespace gpu
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#pragma once
++
++#include "dpcpp_types.h"
++#include "renderer.h"
++
++#include <CL/sycl.hpp>
++
++#include <gst/video/video-frame.h>
++
++class BufferMapper;
++namespace gpu {
++namespace draw {
++
++class RendererGPU : public Renderer {
++  protected:
++    template <typename T>
++    using gpu_unique_ptr = std::unique_ptr<T, std::function<void(T *)>>;
++
++    struct TextStorage {
++        uint8_t *map;
++        cv::Size size;
++        int baseline;
++    };
++
++    int image_width;
++    int image_height;
++    std::shared_ptr<sycl::queue> queue;
++    gpu_unique_ptr<gpu::dpcpp::MaskedPixel> mask;
++    std::map<std::string, TextStorage> text_storage;
++    std::shared_ptr<BufferMapper> buffer_mapper;
++    sycl::event mask_clear_event;
++
++    gpu_unique_ptr<gpu::dpcpp::Rect> rectangles = nullptr;
++    gpu_unique_ptr<gpu::dpcpp::Circle> circles = nullptr;
++    gpu_unique_ptr<gpu::dpcpp::Line> lines = nullptr;
++    gpu_unique_ptr<gpu::dpcpp::Text> texts = nullptr;
++    uint32_t _rectangles_size = 0;
++    uint32_t _circles_size = 0;
++    uint32_t _lines_size = 0;
++    uint32_t _texts_size = 0;
++
++    gpu::dpcpp::Rect prepare_rectangle(gapidraw::Rect rect, int &max_side);
++    std::vector<gpu::dpcpp::Text> prepare_text(const gapidraw::Text &drawing_text, int &max_width, int &max_height);
++    void draw_prims_on_mask(std::vector<cv::gapi::wip::draw::Prim> &prims);
++
++    void malloc_device_prims(int index, uint32_t size);
++    void clear_mask();
++
++  public:
++    RendererGPU(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
++                int image_width, int image_height);
++    void buffer_unmap() override;
++    void buffer_map(void *buffer, InferenceBackend::Image &image, WatermarkVideoInfo *info) override;
++    ~RendererGPU();
++};
++
++class RendererNV12 : public RendererGPU {
++  public:
++    void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
++                      uint64_t drm_format_modifier) override;
++
++  public:
++    RendererNV12(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
++                 int image_width, int image_height)
++        : RendererGPU(color_converter, memory_type, image_width, image_height) {
++    }
++};
++
++class RendererI420 : public RendererGPU {
++  public:
++    void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
++                      uint64_t drm_format_modifier) override;
++
++  public:
++    RendererI420(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
++                 int image_width, int image_height)
++        : RendererGPU(color_converter, memory_type, image_width, image_height) {
++    }
++};
++
++class RendererBGR : public RendererGPU {
++  public:
++    void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
++                      uint64_t drm_format_modifier) override;
++
++  public:
++    RendererBGR(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
++                int image_width, int image_height)
++        : RendererGPU(color_converter, memory_type, image_width, image_height) {
++    }
++};
++
++} // namespace draw
++} // namespace gpu
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.cpp b/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.cpp
+index 05ff4f2..e2086f3 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.cpp
++++ b/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.cpp
+@@ -1,159 +1,121 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#include "usm_buffer_map.h"
+-#include "gva_buffer_map.h"
+-
+-#include <gst/allocators/allocators.h>
+-
+-#include <va/va_backend.h>
+-#include <va/va_drmcommon.h>
+-
+-#include <unistd.h>
+-
+-#include <iostream>
+-
+-namespace {
+-
+-void CheckVaStatus(VAStatus status, const std::string &throw_message) {
+-    if (status != VA_STATUS_SUCCESS)
+-        throw std::runtime_error(throw_message);
+-}
+-
+-} // namespace
+-
+-struct ZeDeviceMemContext {
+-    void *ze_mem_device_buf_ptr = nullptr;
+-
+-    VADriverContextP driver_context = nullptr;
+-    VAImage va_image = {};
+-};
+-
+-UsmBufferMapper::UsmBufferMapper(std::shared_ptr<sycl::queue> queue) : _queue(queue) {
+-    if (!_queue) {
+-        throw std::logic_error("sycl::queue required for MemoryType::USM_DEVICE_POINTER");
+-    }
+-    _map_context = std::unique_ptr<ZeDeviceMemContext>(new ZeDeviceMemContext);
+-};
+-
+-InferenceBackend::Image UsmBufferMapper::map(GstBuffer *buffer, GstVideoInfo *info, GstMapFlags) {
+-    fill_image_with_video_info(info, _image);
+-    assert(_queue != nullptr);
+-
+-    size_t n_planes = GST_VIDEO_INFO_N_PLANES(info);
+-    mapGstBuffer(buffer, _image, _map_context.get());
+-
+-    size_t dma_size = 1024;
+-    _map_context->ze_mem_device_buf_ptr = allocateZeMem(_queue, _image.dma_fd, dma_size);
+-    for (size_t i = 0; i < n_planes; ++i) {
+-        _image.planes[i] = (uint8_t *)_map_context->ze_mem_device_buf_ptr + _image.offsets[i];
+-    }
+-
+-    _image.type = InferenceBackend::MemoryType::USM_DEVICE_POINTER;
+-    return _image;
+-}
+-
+-void UsmBufferMapper::unmap() {
+-    if (_map_context->ze_mem_device_buf_ptr) {
+-        ze_context_handle_t ze_context = _queue->get_context().get_native<sycl::backend::level_zero>();
+-        // WA for issue in Level Zero when zeMemFree called FD that was passed to export external memory will
+-        // be closed but shouldn`t.
+-        int tmp_fd = dup(_image.dma_fd); // TODO: Remove when fixed in LZ
+-        zeMemFree(ze_context, _map_context->ze_mem_device_buf_ptr);
+-        dup2(tmp_fd, _image.dma_fd); // TODO: Remove when fixed in LZ
+-        close(tmp_fd);               // TODO: Remove when fixed in LZ
+-
+-        auto driver_context = _map_context->driver_context;
+-        auto vtable = driver_context->vtable;
+-        VAStatus status;
+-        status = vtable->vaReleaseBufferHandle(driver_context, _map_context->va_image.buf);
+-        status |= vtable->vaDestroyImage(driver_context, _map_context->va_image.image_id);
+-        CheckVaStatus(status, "Failed destoy vaimage or release buffer handle.");
+-
+-        memset(_map_context.get(), 0, sizeof(ZeDeviceMemContext));
+-        memset(&_image, 0, sizeof(InferenceBackend::Image));
+-    }
+-}
+-
+-void UsmBufferMapper::mapGstBuffer(GstBuffer *buffer, InferenceBackend::Image &image, ZeDeviceMemContext *map_context) {
+-    GstMemory *mem = gst_buffer_peek_memory(buffer, 0);
+-    if (!mem) {
+-        throw std::runtime_error("Failed to get GstBuffer memory");
+-    }
+-
+-    if (gst_is_dmabuf_memory(mem)) { // memory:DMABuf
+-        image.dma_fd = gst_dmabuf_memory_get_fd(mem);
+-    } else { // memory:VASurface
+-        // query VASurfaceID, then get DRM fd from VASurfaceID
+-        void *va_display = gst_mini_object_get_qdata(&buffer->mini_object, g_quark_from_static_string("VADisplay"));
+-        int va_surface_id =
+-            (uint64_t)gst_mini_object_get_qdata(&buffer->mini_object, g_quark_from_static_string("VASurfaceID"));
+-        if (!va_display) {
+-            throw std::runtime_error("Failed to get VADisplay");
+-        }
+-
+-        auto driver_context = reinterpret_cast<VADisplayContextP>(va_display)->pDriverContext;
+-        if (!driver_context)
+-            throw std::runtime_error("Driver context is null");
+-        auto vtable = driver_context->vtable;
+-
+-        VAStatus status;
+-        // Export drm prime decription to get information about tiling - drm_format_modifier.
+-        VADRMPRIMESurfaceDescriptor drm_desc = {};
+-        status = vtable->vaExportSurfaceHandle(driver_context, va_surface_id, VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2,
+-                                               VA_EXPORT_SURFACE_READ_WRITE, &drm_desc);
+-        CheckVaStatus(status, "Could not export DRM PRIME surface handle.");
+-
+-        if (drm_desc.num_objects != 1)
+-            throw std::runtime_error("Drm descriptor has unsupported number of objects.");
+-        image.drm_format_modifier = drm_desc.objects[0].drm_format_modifier; // non-zero if tiled (non-linear) mem
+-        close(drm_desc.objects[0].fd);
+-
+-        map_context->driver_context = driver_context;
+-
+-        status = vtable->vaDeriveImage(driver_context, va_surface_id, &(map_context->va_image));
+-        CheckVaStatus(status, "Could not derive vaimage from surface.");
+-
+-        VAImage &va_image = map_context->va_image;
+-        VABufferInfo buffer_info = {};
+-        status = vtable->vaAcquireBufferHandle(driver_context, va_image.buf, &buffer_info);
+-        CheckVaStatus(status, "Could not acquire vaimage buffer handle.");
+-        image.dma_fd = buffer_info.handle;
+-
+-        image.type = InferenceBackend::MemoryType::DMA_BUFFER;
+-
+-        image.height = va_image.height;
+-        image.width = va_image.width;
+-        for (uint32_t i = 0; i < va_image.num_planes; i++) {
+-            image.stride[i] = va_image.pitches[i];
+-            image.offsets[i] = va_image.offsets[i];
+-        }
+-        image.format = va_image.format.fourcc;
+-    }
+-}
+-
+-void *UsmBufferMapper::allocateZeMem(std::shared_ptr<sycl::queue> queue, int dma_fd, size_t dma_size) {
+-
+-    ze_context_handle_t ze_context = queue->get_context().get_native<sycl::backend::level_zero>();
+-    ze_device_handle_t ze_device = queue->get_device().get_native<sycl::backend::level_zero>();
+-
+-    ze_external_memory_import_fd_t import_fd = {ZE_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMPORT_FD, nullptr,
+-                                                ZE_EXTERNAL_MEMORY_TYPE_FLAG_DMA_BUF, dma_fd};
+-    ze_device_mem_alloc_desc_t alloc_desc = {};
+-    alloc_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+-    alloc_desc.pNext = &import_fd;
+-    void *ptr = nullptr;
+-    ze_result_t ze_res = zeMemAllocDevice(ze_context, &alloc_desc, dma_size, 1, ze_device, &ptr);
+-
+-    if (ze_res != ZE_RESULT_SUCCESS) {
+-        throw std::runtime_error("Failed to allocate ze device memory.");
+-    }
+-
+-    return ptr;
+-}
+-
+-UsmBufferMapper::~UsmBufferMapper() {
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#include "renderer.h"
++#include "usm_buffer_map.h"
++#include "gva_buffer_map.h"
++
++#include <gst/allocators/allocators.h>
++
++#include <va/va_backend.h>
++#include <va/va_drmcommon.h>
++
++#include <unistd.h>
++
++#include <iostream>
++
++struct usm_ptr_context_t {
++    ze_context_handle_t ze_context;
++    void *ptr;
++    InferenceBackend::Image image;
++};
++
++UsmBufferMapper::UsmBufferMapper(std::shared_ptr<sycl::queue> queue) : _queue(queue) {
++    if (!_queue) {
++        throw std::logic_error("sycl::queue required for MemoryType::USM_DEVICE_POINTER");
++    }
++};
++
++InferenceBackend::Image UsmBufferMapper::map(void *buffer, WatermarkVideoInfo *info, GstMapFlags) {
++    assert(_queue != nullptr);
++
++    void *ptr = get_device_pointer(_queue, buffer, &_image, info);
++    ze_context_handle_t ze_context = _queue->get_context().get_native<sycl::backend::level_zero>();
++
++    // USM pointer will be closed in UsmBufferMapper::unmap
++    _ze_context = ze_context;
++    _usm_ptr = ptr;
++
++    _image.type = InferenceBackend::MemoryType::USM_DEVICE_POINTER;
++    return _image;
++}
++
++void UsmBufferMapper::unmap() {
++    if (_ze_context && _usm_ptr) {
++        // WA for issue in Level Zero when zeMemFree called FD that was passed to export external memory will
++        // be closed but shouldn`t.
++        int tmp_fd = dup(_dma_fd); // TODO: Remove when fixed in LZ
++        //std::cout << "zeMemFree context: " << _ze_context << " dma_fd: " << _dma_fd << " ptr: " << _usm_ptr << std::endl;
++        zeMemFree((ze_context_handle_t)_ze_context, _usm_ptr);
++        dup2(tmp_fd, _dma_fd); // TODO: Remove when fixed in LZ
++        close(tmp_fd);         // TODO: Remove when fixed in LZ
++    }
++}
++
++void *UsmBufferMapper::get_device_pointer(std::shared_ptr<sycl::queue> queue, void *buffer,
++                                          InferenceBackend::Image *image, WatermarkVideoInfo *info) {
++    int dma_fd;
++    (void)buffer;
++    size_t dma_size = 1024;
++        // query VASurfaceID, then get DRM fd from VASurfaceID
++        void *va_display = info->vaDisplay;
++        int va_surface_id = info->surfaceId;
++
++        auto driver_context = reinterpret_cast<VADisplayContextP>(va_display)->pDriverContext;
++        if (!driver_context)
++            throw std::runtime_error("Driver context is null");
++        auto vtable = driver_context->vtable;
++
++        VADRMPRIMESurfaceDescriptor prime_desc{};
++        vtable->vaExportSurfaceHandle(driver_context, va_surface_id, VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2,
++                                      VA_EXPORT_SURFACE_READ_WRITE, &prime_desc);
++        dma_fd = prime_desc.objects[0].fd;
++        dma_size = prime_desc.objects[0].size;
++        image->drm_format_modifier = prime_desc.objects[0].drm_format_modifier; // non-zero if tiled (non-linear) mem
++            uint32_t n_planes = 0;
++        if (image) { // update stride and offset for each plane
++            for (uint32_t i = 0; i < prime_desc.num_layers; i++) {
++                auto layer = &prime_desc.layers[i];
++                for (uint32_t j = 0; j < layer->num_planes; j++) {
++                    if (n_planes < InferenceBackend::Image::MAX_PLANES_NUMBER) {
++                        image->stride[n_planes] = layer->pitch[j];
++                        image->offsets[n_planes] = layer->offset[j];
++                        n_planes++;
++                    }
++                }
++            }
++        }
++
++    ze_context_handle_t ze_context = queue->get_context().get_native<sycl::backend::level_zero>();
++    ze_device_handle_t ze_device = queue->get_device().get_native<sycl::backend::level_zero>();
++    void *ptr = nullptr;
++    ze_result_t ze_res;
++
++    ze_external_memory_import_fd_t import_fd = {ZE_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMPORT_FD,
++                                                nullptr, // pNext
++                                                ZE_EXTERNAL_MEMORY_TYPE_FLAG_DMA_BUF, dma_fd};
++    ze_device_mem_alloc_desc_t alloc_desc = {};
++    alloc_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
++    alloc_desc.pNext = &import_fd;
++    _dma_fd = dma_fd;
++    ze_res = zeMemAllocDevice(ze_context, &alloc_desc, dma_size, 1, ze_device, &ptr);
++    //std::cout << "zeMemAllocDevice context: " << ze_context << " dma_fd: " << dma_fd << " size: " << dma_size << " ptr: " << ptr << std::endl;
++
++    for (size_t i = 0; i < n_planes; ++i) {
++        image->planes[i] = (uint8_t *)ptr + image->offsets[i];
++    }
++
++
++    if (ze_res != ZE_RESULT_SUCCESS) {
++	std::cout << "zeMemAllocDevice failed: " << ze_res << std::endl;
++	std::cout << "zeMemAllocDevice dma_fd: " << dma_fd << " dma_size: " << dma_size << std::endl;
++        throw std::runtime_error("Failed to get USM pointer");
++    }
++
++    close(dma_fd);
++
++    return ptr;
+ }
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.h b/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.h
+index 541c3ae..480ec34 100644
+--- a/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.h
++++ b/gst/elements/gvawatermark/renderer/gpu/usm_buffer_map.h
+@@ -1,34 +1,31 @@
+-/*******************************************************************************
+- * Copyright (C) 2021 Intel Corporation
+- *
+- * SPDX-License-Identifier: MIT
+- ******************************************************************************/
+-
+-#pragma once
+-
+-#include "buffer_map/buffer_mapper.h"
+-
+-#include <level_zero/ze_api.h>
+-
+-#include <CL/sycl/backend.hpp>
+-#include <CL/sycl/backend/level_zero.hpp>
+-
+-#include <memory>
+-
+-struct ZeDeviceMemContext;
+-
+-class UsmBufferMapper : public BufferMapper {
+-    std::shared_ptr<sycl::queue> _queue;
+-
+-    InferenceBackend::Image _image = {};
+-    std::unique_ptr<ZeDeviceMemContext> _map_context;
+-
+-    static void *allocateZeMem(std::shared_ptr<sycl::queue> queue, int dma_fd, size_t dma_size);
+-    static void mapGstBuffer(GstBuffer *buffer, InferenceBackend::Image &image, ZeDeviceMemContext *map_context);
+-
+-  public:
+-    UsmBufferMapper(std::shared_ptr<sycl::queue> queue);
+-    ~UsmBufferMapper();
+-    InferenceBackend::Image map(GstBuffer *buffer, GstVideoInfo *info, GstMapFlags) override;
+-    void unmap() override;
+-};
++/*******************************************************************************
++ * Copyright (C) 2021 Intel Corporation
++ *
++ * SPDX-License-Identifier: MIT
++ ******************************************************************************/
++
++#pragma once
++
++#include "buffer_map/buffer_mapper.h"
++
++#include <level_zero/ze_api.h>
++
++#include <CL/sycl/backend.hpp>
++#include <CL/sycl/backend/level_zero.hpp>
++
++struct usm_ptr_context_t;
++class UsmBufferMapper : public BufferMapper {
++    InferenceBackend::Image _image;
++    std::shared_ptr<sycl::queue> _queue;
++    int _dma_fd;
++
++    void *_ze_context;
++    void *_usm_ptr;
++    void *get_device_pointer(std::shared_ptr<sycl::queue> queue, void *buffer, InferenceBackend::Image *image, WatermarkVideoInfo *info);
++
++  public:
++    UsmBufferMapper(std::shared_ptr<sycl::queue> queue);
++
++    InferenceBackend::Image map(void *buffer, WatermarkVideoInfo *info, GstMapFlags) override;
++    void unmap() override;
++};
+\ No newline at end of file
+diff --git a/gst/elements/gvawatermark/renderer/renderer.cpp b/gst/elements/gvawatermark/renderer/renderer.cpp
+index 81c0a63..14108b2 100644
+--- a/gst/elements/gvawatermark/renderer/renderer.cpp
++++ b/gst/elements/gvawatermark/renderer/renderer.cpp
+@@ -26,7 +26,7 @@ int Renderer::FourccToOpenCVMatType(int fourcc) {
+     throw std::invalid_argument("Could not convert fourcc to cv mat type: unsupported fourcc format");
+ }
+ 
+-std::vector<cv::Mat> Renderer::convertImageToMat(const InferenceBackend::Image &image) {
++std::vector<cv::Mat> Renderer::ConvertImageToMat(const InferenceBackend::Image &image) {
+     std::vector<cv::Mat> image_planes;
+     switch (image.format) {
+     case InferenceBackend::FOURCC_BGRA:
+@@ -59,25 +59,25 @@ void Renderer::convert_prims_color(std::vector<gapidraw::Prim> &prims) {
+         // TODO: use references
+         case gapidraw::Prim::index_of<gapidraw::Line>(): {
+             gapidraw::Line line = cv::util::get<gapidraw::Line>(p);
+-            line.color = _color_converter->convert(line.color);
++            line.color = m_colorConverter->convert(line.color);
+             p = line;
+             break;
+         }
+         case gapidraw::Prim::index_of<gapidraw::Rect>(): {
+             gapidraw::Rect rect = cv::util::get<gapidraw::Rect>(p);
+-            rect.color = _color_converter->convert(rect.color);
++            rect.color = m_colorConverter->convert(rect.color);
+             p = rect;
+             break;
+         }
+         case gapidraw::Prim::index_of<gapidraw::Text>(): {
+             gapidraw::Text text = cv::util::get<gapidraw::Text>(p);
+-            text.color = _color_converter->convert(text.color);
++            text.color = m_colorConverter->convert(text.color);
+             p = text;
+             break;
+         }
+         case gapidraw::Prim::index_of<gapidraw::Circle>(): {
+             gapidraw::Circle circle = cv::util::get<gapidraw::Circle>(p);
+-            circle.color = _color_converter->convert(circle.color);
++            circle.color = m_colorConverter->convert(circle.color);
+             p = circle;
+             break;
+         }
+@@ -85,12 +85,12 @@ void Renderer::convert_prims_color(std::vector<gapidraw::Prim> &prims) {
+     }
+ }
+ 
+-void Renderer::draw(GstBuffer *buffer, GstVideoInfo *info, std::vector<gapidraw::Prim> prims) {
++void Renderer::draw(void *buffer, WatermarkVideoInfo *info, std::vector<gapidraw::Prim> prims) {
+     BufferMapContext mapContext;
+     InferenceBackend::Image image;
+-    buffer_map(buffer, image, mapContext, info);
+-    auto mapContextGuard = makeScopeGuard([&] { buffer_unmap(mapContext); });
+-    std::vector<cv::Mat> image_planes = convertImageToMat(image);
++    buffer_map(buffer, image, info);
++    auto mapContextGuard = makeScopeGuard([&] { buffer_unmap(); });
++    std::vector<cv::Mat> image_planes = ConvertImageToMat(image);
+     convert_prims_color(prims);
+     draw_backend(image_planes, prims, image.drm_format_modifier);
+ }
+diff --git a/gst/elements/gvawatermark/renderer/renderer.h b/gst/elements/gvawatermark/renderer/renderer.h
+index 411f9f1..6a063ac 100644
+--- a/gst/elements/gvawatermark/renderer/renderer.h
++++ b/gst/elements/gvawatermark/renderer/renderer.h
+@@ -23,30 +23,55 @@
+ 
+ namespace gapidraw = cv::gapi::wip::draw;
+ 
+-class Renderer {
++typedef struct _WatermarkVideoInfo
++{
++    void *vaDisplay;
++    unsigned int surfaceId;
++    unsigned int width;
++    unsigned int height;
++} WatermarkVideoInfo;
++
++class Renderer
++{
+   public:
+-    void draw(GstBuffer *buffer, GstVideoInfo *info, std::vector<gapidraw::Prim> prims);
++    void draw(void *buffer, WatermarkVideoInfo *info,
++              std::vector<gapidraw::Prim> prims);
++
++    virtual void buffer_map(void *buffer, InferenceBackend::Image &image,
++                           WatermarkVideoInfo *info) = 0;
++
++    virtual void buffer_unmap() = 0;
+ 
+     virtual ~Renderer() = default;
+ 
++    std::function<void()> m_unmapFunc;
++    std::function<void(void *buffer, InferenceBackend::Image &image,
++                       WatermarkVideoInfo *info)>
++        m_mapFunc;
++    std::function<void(std::vector<cv::Mat> &imagePlanes,
++                       std::vector<cv::gapi::wip::draw::Prim> &prims,
++                       uint64_t drmFormatModifier)>
++        m_drawFunc;
++
+   protected:
+-    std::shared_ptr<ColorConverter> _color_converter;
+-    InferenceBackend::MemoryType _memory_type;
++    std::shared_ptr<ColorConverter> m_colorConverter;
++    InferenceBackend::MemoryType m_memoryType;
+ 
+-    Renderer(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type)
+-        : _color_converter(color_converter), _memory_type(memory_type) {
++    Renderer(std::shared_ptr<ColorConverter> colorConverter,
++             InferenceBackend::MemoryType memoryType)
++        : m_colorConverter(colorConverter), m_memoryType(memoryType)
++    {
+     }
+ 
+     void convert_prims_color(std::vector<gapidraw::Prim> &prims);
+ 
+-    virtual void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
+-                              uint64_t drm_format_modifier = 0) = 0;
+-    virtual void buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
+-                            GstVideoInfo *info) = 0;
+-    virtual void buffer_unmap(BufferMapContext &map_context) = 0;
++    virtual void draw_backend(std::vector<cv::Mat> &imagePlanes,
++                             std::vector<gapidraw::Prim> &prims,
++                             uint64_t drmFormatModifier = 0) = 0;
+ 
+   private:
+     static int FourccToOpenCVMatType(int fourcc);
+ 
+-    static std::vector<cv::Mat> convertImageToMat(const InferenceBackend::Image &image);
++    static std::vector<cv::Mat>
++    ConvertImageToMat(const InferenceBackend::Image &image);
+ };

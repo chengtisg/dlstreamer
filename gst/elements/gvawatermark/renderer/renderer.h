@@ -23,30 +23,55 @@
 
 namespace gapidraw = cv::gapi::wip::draw;
 
-class Renderer {
+typedef struct _WatermarkVideoInfo
+{
+    void *vaDisplay;
+    unsigned int surfaceId;
+    unsigned int width;
+    unsigned int height;
+} WatermarkVideoInfo;
+
+class Renderer
+{
   public:
-    void draw(GstBuffer *buffer, GstVideoInfo *info, std::vector<gapidraw::Prim> prims);
+    void draw(void *buffer, WatermarkVideoInfo *info,
+              std::vector<gapidraw::Prim> prims);
+
+    virtual void buffer_map(void *buffer, InferenceBackend::Image &image,
+                           WatermarkVideoInfo *info) = 0;
+
+    virtual void buffer_unmap() = 0;
 
     virtual ~Renderer() = default;
 
-  protected:
-    std::shared_ptr<ColorConverter> _color_converter;
-    InferenceBackend::MemoryType _memory_type;
+    std::function<void()> m_unmapFunc;
+    std::function<void(void *buffer, InferenceBackend::Image &image,
+                       WatermarkVideoInfo *info)>
+        m_mapFunc;
+    std::function<void(std::vector<cv::Mat> &imagePlanes,
+                       std::vector<cv::gapi::wip::draw::Prim> &prims,
+                       uint64_t drmFormatModifier)>
+        m_drawFunc;
 
-    Renderer(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type)
-        : _color_converter(color_converter), _memory_type(memory_type) {
+  protected:
+    std::shared_ptr<ColorConverter> m_colorConverter;
+    InferenceBackend::MemoryType m_memoryType;
+
+    Renderer(std::shared_ptr<ColorConverter> colorConverter,
+             InferenceBackend::MemoryType memoryType)
+        : m_colorConverter(colorConverter), m_memoryType(memoryType)
+    {
     }
 
     void convert_prims_color(std::vector<gapidraw::Prim> &prims);
 
-    virtual void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<gapidraw::Prim> &prims,
-                              uint64_t drm_format_modifier = 0) = 0;
-    virtual void buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
-                            GstVideoInfo *info) = 0;
-    virtual void buffer_unmap(BufferMapContext &map_context) = 0;
+    virtual void draw_backend(std::vector<cv::Mat> &imagePlanes,
+                             std::vector<gapidraw::Prim> &prims,
+                             uint64_t drmFormatModifier = 0) = 0;
 
   private:
     static int FourccToOpenCVMatType(int fourcc);
 
-    static std::vector<cv::Mat> convertImageToMat(const InferenceBackend::Image &image);
+    static std::vector<cv::Mat>
+    ConvertImageToMat(const InferenceBackend::Image &image);
 };

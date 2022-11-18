@@ -20,6 +20,6 @@ class BufferMapper {
     BufferMapper() = default;
     virtual ~BufferMapper() = default;
 
-    virtual InferenceBackend::Image map(GstBuffer *buffer, GstVideoInfo *info, GstMapFlags flag) = 0;
+    virtual InferenceBackend::Image map(void *buffer, WatermarkVideoInfo *info, GstMapFlags) = 0;
     virtual void unmap() = 0;
 };

@@ -15,9 +15,9 @@ class RendererCPU : public Renderer {
     }
 
   protected:
-    void buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
-                    GstVideoInfo *info) override;
-    void buffer_unmap(BufferMapContext &map_context) override;
+    void buffer_map(void *buffer, InferenceBackend::Image &image,
+                    WatermarkVideoInfo *info) override;
+    void buffer_unmap() override;
 };
 
 class RendererYUV : public RendererCPU {

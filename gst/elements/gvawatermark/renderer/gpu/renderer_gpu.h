@@ -49,20 +49,19 @@ class RendererGPU : public Renderer {
     std::vector<gpu::dpcpp::Text> prepare_text(const gapidraw::Text &drawing_text, int &max_width, int &max_height);
     void draw_prims_on_mask(std::vector<cv::gapi::wip::draw::Prim> &prims);
 
-    void buffer_map(GstBuffer *buffer, InferenceBackend::Image &image, BufferMapContext &map_context,
-                    GstVideoInfo *info) override;
-    void buffer_unmap(BufferMapContext &map_context) override;
     void malloc_device_prims(int index, uint32_t size);
     void clear_mask();
 
   public:
     RendererGPU(std::shared_ptr<ColorConverter> color_converter, InferenceBackend::MemoryType memory_type,
                 int image_width, int image_height);
+    void buffer_unmap() override;
+    void buffer_map(void *buffer, InferenceBackend::Image &image, WatermarkVideoInfo *info) override;
     ~RendererGPU();
 };
 
 class RendererNV12 : public RendererGPU {
-  protected:
+  public:
     void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
                       uint64_t drm_format_modifier) override;
 
@@ -74,7 +73,7 @@ class RendererNV12 : public RendererGPU {
 };
 
 class RendererI420 : public RendererGPU {
-  protected:
+  public:
     void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
                       uint64_t drm_format_modifier) override;
 
@@ -86,7 +85,7 @@ class RendererI420 : public RendererGPU {
 };
 
 class RendererBGR : public RendererGPU {
-  protected:
+  public:
     void draw_backend(std::vector<cv::Mat> &image_planes, std::vector<cv::gapi::wip::draw::Prim> &prims,
                       uint64_t drm_format_modifier) override;
 
